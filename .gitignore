@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+.eggs/
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build (Nuitka output - não subir compilação temporária)
+dist/main.build/
+dist/main.dist/
+dist/main.onefile-build/
+*.spec
+
+# Executáveis intermediários (manter apenas o setup final)
+dist/UtilitariosPC.exe
+
+# VC++ Redistributable (arquivo grande, baixar separadamente)
+dist/vc_redist.x64.exe
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# Arquivos temporários
+*.tmp
+*.temp
+*.bak
+
+# Gemini/AI
+.gemini/
+
+# Manter no repositório:
+# - installer/ (contém o setup final para distribuição)
+# - build.bat (script de build)
+# - installer.iss (script do Inno Setup)
