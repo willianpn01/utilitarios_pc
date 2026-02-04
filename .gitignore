@@ -47,6 +47,9 @@ desktop.ini
 # Gemini/AI
 .gemini/
 
+# Release notes (manter local, copiar para GitHub manualmente)
+RELEASE_NOTES.md
+
 # Manter no repositório:
 # - installer/ (contém o setup final para distribuição)
 # - build.bat (script de build)

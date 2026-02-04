@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QFileDialog, QCheckBox, QTextEdit, QTableWidget, QTableWidgetItem,
     QMessageBox, QTabWidget, QDialog, QListWidget, QListWidgetItem,
-    QDialogButtonBox
+    QDialogButtonBox, QApplication
 )
 from PyQt6.QtGui import QTextCharFormat, QColor, QTextCursor
 from PyQt6.QtCore import Qt, QSettings, QThread, QObject, pyqtSignal
@@ -344,8 +344,71 @@ class AutoOrganizerWidget(QWidget):
             QMessageBox.warning(self, 'Conflitos de regras', msg)
             return
         rule.recursive = self.recursive.isChecked()
-        self._plan = build_plan(directory, rule)
-        self._update_table_from_plan()
+        
+        # Executar build_plan em thread separada para não travar a UI
+        from PyQt6.QtWidgets import QProgressDialog
+        from PyQt6.QtCore import QThread, QObject, pyqtSignal
+        
+        self.btn_preview.setEnabled(False)
+        self.btn_apply.setEnabled(False)
+        
+        prog = QProgressDialog('Analisando arquivos...', 'Cancelar', 0, 0, self)
+        prog.setWindowTitle('Gerando Prévia')
+        prog.setMinimumDuration(0)
+        prog.setWindowModality(Qt.WindowModality.WindowModal)
+        prog.show()
+        
+        # Force a UI to update
+        QApplication.processEvents()
+        
+        class PreviewWorker(QObject):
+            finished = pyqtSignal(list)  # plan
+            error = pyqtSignal(str)
+            
+            def __init__(self, directory, rule):
+                super().__init__()
+                self.directory = directory
+                self.rule = rule
+            
+            def run(self):
+                try:
+                    plan = build_plan(self.directory, self.rule)
+                    self.finished.emit(plan)
+                except Exception as e:
+                    self.error.emit(str(e))
+        
+        thread = QThread(self)
+        worker = PreviewWorker(directory, rule)
+        worker.moveToThread(thread)
+        
+        def on_finished(plan):
+            self._plan = plan
+            self._update_table_from_plan()
+            prog.close()
+            self.btn_preview.setEnabled(True)
+            self.btn_apply.setEnabled(True)
+            thread.quit()
+            thread.wait()
+            worker.deleteLater()
+            thread.deleteLater()
+            self.summary.setText(f"Prévia: {len([p for p in plan if p.action == 'move'])} arquivos para mover")
+        
+        def on_error(msg):
+            prog.close()
+            self.btn_preview.setEnabled(True)
+            self.btn_apply.setEnabled(True)
+            QMessageBox.critical(self, 'Erro', f'Falha ao gerar prévia: {msg}')
+            thread.quit()
+            thread.wait()
+            worker.deleteLater()
+            thread.deleteLater()
+        
+        worker.finished.connect(on_finished)
+        worker.error.connect(on_error)
+        prog.canceled.connect(lambda: thread.quit())
+        
+        thread.started.connect(worker.run)
+        thread.start()
 
     def _update_table_from_plan(self) -> None:
         # Preencher tabela inteira a partir de self._plan

@@ -136,7 +136,27 @@ def main() -> int:
     tray.show_window_requested.connect(lambda: (window.showNormal(), window.activateWindow()))
     tray.quit_requested.connect(lambda: (tray.hide(), app.quit()))
     
-    # Integrar toggle de monitoramento com o widget
+    # Ação rápida: Limpar clipboard
+    def clear_clipboard():
+        app.clipboard().clear()
+    tray.clear_clipboard_requested.connect(clear_clipboard)
+    
+    # Ação rápida: Pausar/retomar watchdog
+    def toggle_watchdog_pause(minutes: int):
+        organizer = window.stack.widget(3)
+        if hasattr(organizer, 'watcher_widget'):
+            watcher = organizer.watcher_widget._watcher
+            if minutes > 0:
+                # Pausar
+                watcher.stop()
+            else:
+                # Retomar (se tinha configurações)
+                if organizer.watcher_widget._watcher.get_all_configs():
+                    watcher.start()
+                    tray.set_monitoring_status(True)
+    tray.pause_watchdog_requested.connect(toggle_watchdog_pause)
+    
+    # Integrar toggle de monitoramento de pastas com o widget
     def toggle_monitoring():
         # Encontrar widget de monitoramento
         organizer = window.stack.widget(3)  # Organizador é o índice 3
@@ -146,6 +166,17 @@ def main() -> int:
             tray.set_monitoring_status(watcher_widget._watcher.is_running)
     
     tray.toggle_monitoring_requested.connect(toggle_monitoring)
+    
+    # Integrar toggle de monitoramento de clipboard com o widget
+    def toggle_clipboard_monitoring():
+        clipboard_widget = window.stack.widget(8)  # Clipboard é o índice 8 (último)
+        if hasattr(clipboard_widget, 'chk_monitor'):
+            # Toggle o estado
+            current_state = clipboard_widget.chk_monitor.isChecked()
+            clipboard_widget.chk_monitor.setChecked(not current_state)
+            tray.set_clipboard_monitoring_status(not current_state)
+    
+    tray.toggle_clipboard_monitoring_requested.connect(toggle_clipboard_monitoring)
     
     # Conectar sinal de arquivo organizado para notificação
     def on_file_organized_notification(event):

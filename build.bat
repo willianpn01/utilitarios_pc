@@ -47,8 +47,8 @@ python -m nuitka ^
     --output-filename=UtilitariosPC.exe ^
     --company-name="Projeto Utilitarios" ^
     --product-name="Utilitarios PC" ^
-    --file-version=1.0.0.0 ^
-    --product-version=1.0.0.0 ^
+    --file-version=1.1.0.0 ^
+    --product-version=1.1.0.0 ^
     --file-description="Suite de utilitarios para organizacao de arquivos e produtividade no Windows" ^
     --copyright="Copyright (C) 2026 Projeto Utilitarios" ^
     --trademarks="Utilitarios PC" ^

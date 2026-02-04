@@ -11,7 +11,7 @@ from typing import Optional, Callable
 
 from PyQt6.QtWidgets import QSystemTrayIcon, QMenu, QApplication
 from PyQt6.QtGui import QIcon, QAction
-from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtCore import QObject, pyqtSignal, QTimer
 
 
 class SystemTrayManager(QObject):
@@ -20,7 +20,10 @@ class SystemTrayManager(QObject):
     # Sinais
     show_window_requested = pyqtSignal()
     quit_requested = pyqtSignal()
-    toggle_monitoring_requested = pyqtSignal()
+    toggle_monitoring_requested = pyqtSignal()  # Watchdog de pastas
+    toggle_clipboard_monitoring_requested = pyqtSignal()  # Histórico de clipboard
+    clear_clipboard_requested = pyqtSignal()
+    pause_watchdog_requested = pyqtSignal(int)  # minutos
     
     def __init__(self, parent=None, icon_path: str = ""):
         super().__init__(parent)
@@ -28,6 +31,9 @@ class SystemTrayManager(QObject):
         self._tray_icon: Optional[QSystemTrayIcon] = None
         self._menu: Optional[QMenu] = None
         self._monitoring_active = False
+        self._clipboard_monitoring_active = False
+        self._watchdog_paused = False
+        self._pause_timer: Optional[QTimer] = None
         self._icon_path = icon_path
         
         self._init_tray()
@@ -54,21 +60,44 @@ class SystemTrayManager(QObject):
         self._menu = QMenu()
         
         # Ação: Mostrar janela
-        self._action_show = QAction("Mostrar Janela", self)
+        self._action_show = QAction("📺 Mostrar Janela", self)
         self._action_show.triggered.connect(self.show_window_requested.emit)
         self._menu.addAction(self._action_show)
         
         self._menu.addSeparator()
         
-        # Ação: Toggle monitoramento
-        self._action_monitoring = QAction("▶ Iniciar Monitoramento", self)
+        # === Ações Rápidas ===
+        self._menu.addSection("⚡ Ações Rápidas")
+        
+        # Limpar área de transferência
+        self._action_clear_clipboard = QAction("🧹 Limpar Clipboard", self)
+        self._action_clear_clipboard.triggered.connect(self._on_clear_clipboard)
+        self._menu.addAction(self._action_clear_clipboard)
+        
+        # Pausar watchdog
+        self._action_pause = QAction("⏸ Pausar Watchdog (1h)", self)
+        self._action_pause.triggered.connect(lambda: self._on_pause_watchdog(60))
+        self._menu.addAction(self._action_pause)
+        
+        self._menu.addSeparator()
+        
+        # === Monitoramento ===
+        self._menu.addSection("📁 Monitoramento")
+        
+        # Watchdog (pastas)
+        self._action_monitoring = QAction("▶ Watchdog de Pastas", self)
         self._action_monitoring.triggered.connect(self.toggle_monitoring_requested.emit)
         self._menu.addAction(self._action_monitoring)
+        
+        # Clipboard
+        self._action_clipboard_monitoring = QAction("▶ Histórico de Clipboard", self)
+        self._action_clipboard_monitoring.triggered.connect(self.toggle_clipboard_monitoring_requested.emit)
+        self._menu.addAction(self._action_clipboard_monitoring)
         
         self._menu.addSeparator()
         
         # Ação: Sair
-        self._action_quit = QAction("Sair", self)
+        self._action_quit = QAction("❌ Sair", self)
         self._action_quit.triggered.connect(self.quit_requested.emit)
         self._menu.addAction(self._action_quit)
         
@@ -93,18 +122,46 @@ class SystemTrayManager(QObject):
             self._tray_icon.hide()
     
     def set_monitoring_status(self, active: bool):
-        """Atualiza status de monitoramento no menu e tooltip."""
+        """Atualiza status de monitoramento de pastas no menu e tooltip."""
         self._monitoring_active = active
         
         if self._action_monitoring:
             if active:
-                self._action_monitoring.setText("⏹ Parar Monitoramento")
+                self._action_monitoring.setText("⏹ Parar Watchdog de Pastas")
             else:
-                self._action_monitoring.setText("▶ Iniciar Monitoramento")
+                self._action_monitoring.setText("▶ Watchdog de Pastas")
         
-        if self._tray_icon:
-            status = "Ativo" if active else "Inativo"
-            self._tray_icon.setToolTip(f"Utilitários PC - Monitoramento {status}")
+        self._update_tooltip()
+    
+    def set_clipboard_monitoring_status(self, active: bool):
+        """Atualiza status de monitoramento de clipboard no menu."""
+        self._clipboard_monitoring_active = active
+        
+        if self._action_clipboard_monitoring:
+            if active:
+                self._action_clipboard_monitoring.setText("⏹ Parar Histórico de Clipboard")
+            else:
+                self._action_clipboard_monitoring.setText("▶ Histórico de Clipboard")
+        
+        self._update_tooltip()
+    
+    def _update_tooltip(self):
+        """Atualiza tooltip com status de todos os monitoramentos."""
+        if not self._tray_icon:
+            return
+        
+        status_parts = []
+        if self._monitoring_active:
+            status_parts.append("📁 Pastas")
+        if self._clipboard_monitoring_active:
+            status_parts.append("📋 Clipboard")
+        
+        if status_parts:
+            status = f"Monitorando: {', '.join(status_parts)}"
+        else:
+            status = "Monitoramento Inativo"
+        
+        self._tray_icon.setToolTip(f"Utilitários PC - {status}")
     
     def show_notification(self, title: str, message: str, icon: QSystemTrayIcon.MessageIcon = QSystemTrayIcon.MessageIcon.Information):
         """Mostra uma notificação no sistema."""
@@ -114,3 +171,57 @@ class SystemTrayManager(QObject):
     def is_available(self) -> bool:
         """Retorna se o system tray está disponível."""
         return self._tray_icon is not None
+    
+    def _on_clear_clipboard(self):
+        """Limpa a área de transferência."""
+        self.clear_clipboard_requested.emit()
+        self.show_notification(
+            "Clipboard Limpo",
+            "A área de transferência foi limpa."
+        )
+    
+    def _on_pause_watchdog(self, minutes: int):
+        """Pausa o watchdog por X minutos."""
+        if self._watchdog_paused:
+            # Retomar
+            self._resume_watchdog()
+            return
+        
+        self._watchdog_paused = True
+        self.pause_watchdog_requested.emit(minutes)
+        
+        # Atualizar menu
+        self._action_pause.setText(f"▶ Retomar Watchdog ({minutes}min restantes)")
+        
+        # Timer para retomar automaticamente
+        if not self._pause_timer:
+            self._pause_timer = QTimer(self)
+            self._pause_timer.setSingleShot(True)
+            self._pause_timer.timeout.connect(self._resume_watchdog)
+        
+        self._pause_timer.start(minutes * 60 * 1000)  # Converter para ms
+        
+        self.show_notification(
+            "Watchdog Pausado",
+            f"O monitoramento será retomado em {minutes} minutos."
+        )
+    
+    def _resume_watchdog(self):
+        """Retoma o watchdog após a pausa."""
+        self._watchdog_paused = False
+        self._action_pause.setText("⏸ Pausar Watchdog (1h)")
+        
+        if self._pause_timer:
+            self._pause_timer.stop()
+        
+        # Emitir sinal com 0 para indicar retomada
+        self.pause_watchdog_requested.emit(0)
+        
+        self.show_notification(
+            "Watchdog Retomado",
+            "O monitoramento foi retomado."
+        )
+    
+    def is_watchdog_paused(self) -> bool:
+        """Retorna se o watchdog está pausado."""
+        return self._watchdog_paused

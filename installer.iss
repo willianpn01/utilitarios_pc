@@ -2,7 +2,7 @@
 ; Requer Inno Setup 6+: https://jrsoftware.org/isinfo.php
 
 #define MyAppName "Utilitários PC"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.1.0"
 #define MyAppPublisher "Projeto Utilitarios"
 #define MyAppURL "https://github.com/seu-usuario/utilitarios-pc"
 #define MyAppExeName "UtilitariosPC.exe"
