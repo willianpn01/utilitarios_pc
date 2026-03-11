@@ -13,6 +13,8 @@ from PyQt6.QtWidgets import QSystemTrayIcon, QMenu, QApplication
 from PyQt6.QtGui import QIcon, QAction
 from PyQt6.QtCore import QObject, pyqtSignal, QTimer
 
+from app.core.logger import is_debug_mode, set_debug_mode
+
 
 class SystemTrayManager(QObject):
     """Gerenciador do ícone na bandeja do sistema."""
@@ -78,6 +80,15 @@ class SystemTrayManager(QObject):
         self._action_pause = QAction("⏸ Pausar Watchdog (1h)", self)
         self._action_pause.triggered.connect(lambda: self._on_pause_watchdog(60))
         self._menu.addAction(self._action_pause)
+        
+        self._menu.addSeparator()
+
+        # Debug Mode (Logs)
+        self._action_debug = QAction("📝 Modo Debug (Logs)", self)
+        self._action_debug.setCheckable(True)
+        self._action_debug.setChecked(is_debug_mode())
+        self._action_debug.toggled.connect(self._on_toggle_debug)
+        self._menu.addAction(self._action_debug)
         
         self._menu.addSeparator()
         
@@ -225,3 +236,23 @@ class SystemTrayManager(QObject):
     def is_watchdog_paused(self) -> bool:
         """Retorna se o watchdog está pausado."""
         return self._watchdog_paused
+
+    def _on_toggle_debug(self, is_checked: bool) -> None:
+        """Ativa ou desativa os logs do modo debug."""
+        set_debug_mode(is_checked)
+        self.show_notification("Modo Debug", f"Logs detalhados {'ativados' if is_checked else 'desativados'}.")
+
+
+def notify_tray(title: str, message: str) -> None:
+    """
+    Envia notificação via system tray de forma segura.
+    Não faz nada se o tray não estiver disponível ou não for inicializado.
+    """
+    app = QApplication.instance()
+    # Verifica de forma segura se o tray existe
+    tray = getattr(app, '_tray', None) if app else None
+    
+    # Se existe um SystemTrayManager, chama o método para exibir a notificação
+    if tray is not None and hasattr(tray, 'show_notification'):
+        tray.show_notification(title, message)
+

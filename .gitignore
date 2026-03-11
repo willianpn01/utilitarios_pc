@@ -49,6 +49,7 @@ desktop.ini
 
 # Release notes (manter local, copiar para GitHub manualmente)
 RELEASE_NOTES.md
+DOCUMENTACAO_TECNICA.md
 
 # Manter no repositório:
 # - installer/ (contém o setup final para distribuição)

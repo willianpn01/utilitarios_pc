@@ -2,7 +2,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
-from typing import Iterable, List, Tuple, Optional
+from typing import Callable, Iterable, List, Optional, Tuple
 
 
 @dataclass
@@ -34,18 +34,24 @@ def _walk_files(base_dir: str, recursive: bool, extensions: Optional[Iterable[st
     result: List[str] = []
     exts = set(e.lower().lstrip('.') for e in (extensions or []) if e)
     if recursive:
-        for root, _dirs, files in os.walk(base_dir):
-            for f in files:
-                if exts and f.split('.')[-1].lower() not in exts:
-                    continue
-                result.append(os.path.join(root, f))
+        try:
+            for root, _dirs, files in os.walk(base_dir):
+                for f in files:
+                    if exts and f.split('.')[-1].lower() not in exts:
+                        continue
+                    result.append(os.path.join(root, f))
+        except PermissionError:
+            pass
     else:
-        for f in os.listdir(base_dir):
-            p = os.path.join(base_dir, f)
-            if os.path.isfile(p):
-                if exts and f.split('.')[-1].lower() not in exts:
-                    continue
-                result.append(p)
+        try:
+            for f in os.listdir(base_dir):
+                p = os.path.join(base_dir, f)
+                if os.path.isfile(p):
+                    if exts and f.split('.')[-1].lower() not in exts:
+                        continue
+                    result.append(p)
+        except PermissionError:
+            pass
     result.sort()
     return result
 
@@ -89,7 +95,7 @@ def _apply_rules_to_name(name: str, index: int, rule: RenameRule) -> str:
 
     # spaces
     if rule.remove_spaces:
-        composed = re.sub(r"\s+", "_", composed)
+        composed = re.sub(r'\s+', '_', composed)
 
     # case
     if rule.case == 'lower':
@@ -106,11 +112,23 @@ def _apply_rules_to_name(name: str, index: int, rule: RenameRule) -> str:
     return composed + ext
 
 
-def preview_renames(base_dir: str, recursive: bool, extensions: Optional[Iterable[str]], rule: RenameRule) -> List[RenameItem]:
+def preview_renames(
+    base_dir: str,
+    recursive: bool,
+    extensions: Optional[Iterable[str]],
+    rule: RenameRule,
+    progress_cb: Optional[Callable[[int, str], None]] = None,
+    cancel_check: Optional[Callable[[], bool]] = None,
+) -> List[RenameItem]:
     files = _walk_files(base_dir, recursive, extensions)
     items: List[RenameItem] = []
     seen_dsts = set()
+    total = len(files)
     for i, src in enumerate(files):
+        if cancel_check and cancel_check():
+            break
+        if progress_cb and total > 0:
+            progress_cb(int(i / total * 100), os.path.basename(src))
         dir_name = os.path.dirname(src)
         new_name = _apply_rules_to_name(os.path.basename(src), i, rule)
         dst = os.path.join(dir_name, new_name)
@@ -127,10 +145,16 @@ def preview_renames(base_dir: str, recursive: bool, extensions: Optional[Iterabl
             msg = 'Conflito na sessão'
         seen_dsts.add(dst)
         items.append(RenameItem(src=src, dst=dst, status=status, message=msg))
+    if progress_cb:
+        progress_cb(100, 'Concluído')
     return items
 
 
-def apply_renames(items: List[RenameItem]) -> Tuple[int, int, int]:
+def apply_renames(
+    items: List[RenameItem],
+    progress_cb: Optional[Callable[[int, str], None]] = None,
+    cancel_check: Optional[Callable[[], bool]] = None,
+) -> Tuple[int, int, int]:
     """Executa renomeações. Retorna (renomeados, ignorados, erros).
     Garante rollback básico em caso de falha.
     """
@@ -142,10 +166,17 @@ def apply_renames(items: List[RenameItem]) -> Tuple[int, int, int]:
     if any(it.status == 'conflict' for it in items):
         return (0, sum(1 for it in items if it.status != 'ok'), len([1 for it in items if it.status == 'conflict']))
 
-    for it in items:
+    ok_items = [it for it in items if it.status == 'ok' and it.src != it.dst]
+    total = len(ok_items)
+
+    for idx, it in enumerate(items):
+        if cancel_check and cancel_check():
+            break
         if it.status != 'ok' or it.src == it.dst:
             skipped += 1
             continue
+        if progress_cb and total > 0:
+            progress_cb(int(idx / total * 100), os.path.basename(it.src))
         try:
             os.replace(it.src, it.dst)
             renamed.append((it.dst, it.src))  # armazenar para rollback
@@ -158,5 +189,10 @@ def apply_renames(items: List[RenameItem]) -> Tuple[int, int, int]:
                         os.replace(done_dst, done_src)
                 except Exception:
                     pass
+            if progress_cb:
+                progress_cb(100, 'Erro — rollback aplicado')
             return (len(renamed), skipped, errors)
+
+    if progress_cb:
+        progress_cb(100, 'Concluído')
     return (len(renamed), skipped, errors)

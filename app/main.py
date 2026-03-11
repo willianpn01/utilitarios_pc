@@ -113,6 +113,11 @@ def main() -> int:
     # Não fechar quando a janela é fechada (permite minimizar para bandeja)
     app.setQuitOnLastWindowClosed(False)
 
+    # Inicializar Logger global
+    from app.core.logger import get_logger
+    log = get_logger("main")
+    log.info("Iniciando Utilitários PC")
+
     load_qss(app)
 
     # Configurar ícone (tentar vários caminhos)
@@ -131,6 +136,7 @@ def main() -> int:
     
     # Criar system tray
     tray = SystemTrayManager(parent=app, icon_path=icon_path)
+    app._tray = tray  # Expõe para acesso pelos widgets via QApplication.instance()._tray
     
     # Conectar sinais do tray
     tray.show_window_requested.connect(lambda: (window.showNormal(), window.activateWindow()))
