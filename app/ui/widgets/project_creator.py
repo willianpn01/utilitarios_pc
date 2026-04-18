@@ -3,7 +3,7 @@ from typing import Dict
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QFileDialog, QComboBox, QTextEdit, QMessageBox
+    QFileDialog, QComboBox, QTextEdit
 )
 
 from app.core.project_templates import TEMPLATES, render_tree, create_structure
@@ -70,19 +70,19 @@ class ProjectCreatorWidget(QWidget):
     def _create(self) -> None:
         base = self.path_edit.text().strip()
         if not base:
-            QMessageBox.warning(self, 'Aviso', 'Informe o diretório base.')
+            CustomDialog.warning(self, 'Aviso', 'Informe o diretório base.')
             return
         if not os.path.isdir(base):
-            QMessageBox.warning(self, 'Aviso', 'Diretório base inválido.')
+            CustomDialog.warning(self, 'Aviso', 'Diretório base inválido.')
             return
         name = self.tpl_combo.currentText()
         structure = TEMPLATES.get(name, {})
         try:
             created_paths = create_structure(base, structure)
         except Exception as e:  # noqa: BLE001
-            QMessageBox.critical(self, 'Erro', f'Falha ao criar estrutura:\n{e}')
+            CustomDialog.critical(self, 'Erro', f'Falha ao criar estrutura:\n{e}')
             return
-        QMessageBox.information(
+        CustomDialog.information(
             self,
             'Sucesso',
             'Estrutura criada com sucesso!\n' + '\n'.join(created_paths[:50]) + ("\n..." if len(created_paths) > 50 else '')

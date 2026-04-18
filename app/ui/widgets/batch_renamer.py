@@ -5,8 +5,7 @@ from typing import List, Optional
 from PyQt6.QtCore import QObject, QThread, Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QFileDialog,
-    QCheckBox, QComboBox, QSpinBox, QTableWidget, QTableWidgetItem, QMessageBox,
-    QGroupBox, QGridLayout, QProgressDialog, QApplication,
+    QCheckBox, QComboBox, QSpinBox, QTableWidget, QTableWidgetItem, QGroupBox, QGridLayout, QProgressDialog, QApplication,
 )
 
 from app.core.batch_renamer import RenameRule, RenameItem, preview_renames, apply_renames
@@ -340,7 +339,7 @@ class BatchRenamerWidget(QWidget):
     def _on_preview(self) -> None:
         base = self.dir_edit.text().strip()
         if not base or not os.path.isdir(base):
-            QMessageBox.warning(self, 'Aviso', 'Informe um diretório válido.')
+            CustomDialog.warning(self, 'Aviso', 'Informe um diretório válido.')
             return
 
         self._stop_thread()
@@ -380,7 +379,7 @@ class BatchRenamerWidget(QWidget):
         def on_error(msg: str) -> None:
             prog.close()
             self.btn_preview.setEnabled(True)
-            QMessageBox.critical(self, 'Erro na Prévia', msg)
+            CustomDialog.critical(self, 'Erro na Prévia', msg)
             thread.quit(); thread.wait()
             worker.deleteLater(); thread.deleteLater()
             self._thread = None; self._worker = None
@@ -423,7 +422,7 @@ class BatchRenamerWidget(QWidget):
             prog.close()
             self.btn_preview.setEnabled(True)
             self.btn_apply.setEnabled(False)
-            QMessageBox.information(
+            CustomDialog.information(
                 self, 'Resultado',
                 f'Renomeados: {renamed}\nIgnorados: {skipped}\nErros: {errors}'
             )
@@ -438,7 +437,7 @@ class BatchRenamerWidget(QWidget):
             prog.close()
             self.btn_preview.setEnabled(True)
             self.btn_apply.setEnabled(True)
-            QMessageBox.critical(self, 'Erro na Renomeação', msg)
+            CustomDialog.critical(self, 'Erro na Renomeação', msg)
             thread.quit(); thread.wait()
             worker.deleteLater(); thread.deleteLater()
             self._thread = None; self._worker = None

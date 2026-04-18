@@ -7,7 +7,7 @@ from typing import Optional, Tuple
 from PyQt6.QtCore import QTimer, Qt, QSettings
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QListWidget, QListWidgetItem, QMessageBox, QGroupBox, QCheckBox,
+    QListWidget, QListWidgetItem, QGroupBox, QCheckBox,
     QMenu, QInputDialog
 )
 from PyQt6.QtGui import QClipboard, QColor
@@ -352,17 +352,16 @@ class ClipboardHistoryWidget(QWidget):
     
     def _clear_history(self) -> None:
         """Limpa o histórico"""
-        resp = QMessageBox.question(
+        resp = CustomDialog.question(
             self,
             'Limpar histórico',
             'Deseja limpar todo o histórico?\n\n'
-            'Entradas fixadas serão mantidas.',
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            'Entradas fixadas serão mantidas.'
         )
         
-        if resp == QMessageBox.StandardButton.Yes:
+        if resp:
             removed = self.db.clear_history(keep_pinned=True)
-            QMessageBox.information(
+            CustomDialog.information(
                 self,
                 'Histórico limpo',
                 f'{removed} entrada(s) removida(s).'

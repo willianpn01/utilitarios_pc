@@ -7,7 +7,7 @@ from typing import Optional
 from PyQt6.QtCore import QObject, QThread, pyqtSignal, Qt
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QFileDialog, QTreeWidget, QTreeWidgetItem, QMessageBox, QCheckBox,
+    QFileDialog, QTreeWidget, QTreeWidgetItem, QCheckBox,
     QGroupBox, QGridLayout, QProgressDialog, QComboBox
 )
 from PyQt6.QtGui import QColor
@@ -168,10 +168,10 @@ class FolderCompareWidget(QWidget):
         right = self.right_edit.text().strip()
         
         if not left or not os.path.isdir(left):
-            QMessageBox.warning(self, 'Aviso', 'Selecione uma pasta válida para A.')
+            CustomDialog.warning(self, 'Aviso', 'Selecione uma pasta válida para A.')
             return
         if not right or not os.path.isdir(right):
-            QMessageBox.warning(self, 'Aviso', 'Selecione uma pasta válida para B.')
+            CustomDialog.warning(self, 'Aviso', 'Selecione uma pasta válida para B.')
             return
         
         self._left_dir = left
@@ -204,7 +204,7 @@ class FolderCompareWidget(QWidget):
                 self._update_summary(result)
                 self._enable_actions(True)
             else:
-                QMessageBox.warning(self, 'Erro', 'Falha ao comparar diretórios.')
+                CustomDialog.warning(self, 'Erro', 'Falha ao comparar diretórios.')
                 self._enable_actions(False)
             self.btn_compare.setEnabled(True)
             thread.quit()
@@ -307,7 +307,7 @@ class FolderCompareWidget(QWidget):
     def _sync_action(self, action: str) -> None:
         selected = self.tree.selectedItems()
         if not selected:
-            QMessageBox.information(self, 'Aviso', 'Selecione um ou mais arquivos na lista.')
+            CustomDialog.information(self, 'Aviso', 'Selecione um ou mais arquivos na lista.')
             return
         
         # Confirmar ação
@@ -317,13 +317,12 @@ class FolderCompareWidget(QWidget):
             'delete_left': 'excluir de A',
             'delete_right': 'excluir de B'
         }
-        resp = QMessageBox.question(
+        resp = CustomDialog.question(
             self,
             'Confirmar',
-            f'Deseja {action_names[action]} {len(selected)} arquivo(s)?',
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            f'Deseja {action_names[action]} {len(selected)} arquivo(s)?'
         )
-        if resp != QMessageBox.StandardButton.Yes:
+        if not resp:
             return
         
         # Executar ação
@@ -357,7 +356,7 @@ class FolderCompareWidget(QWidget):
             except Exception:
                 errors += 1
         
-        QMessageBox.information(
+        CustomDialog.information(
             self,
             'Concluído',
             f'Operação concluída.\nSucesso: {success}\nErros: {errors}'

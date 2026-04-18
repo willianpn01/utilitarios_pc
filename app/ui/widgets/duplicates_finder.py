@@ -4,20 +4,67 @@ import sys
 import subprocess
 from typing import List, Optional
 
-from PyQt6.QtCore import QObject, QThread, Qt, pyqtSignal
+from PyQt6.QtCore import QObject, QThread, Qt, pyqtSignal, QTimer
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QFileDialog, QCheckBox, QSpinBox, QTableWidget, QTableWidgetItem,
-    QMessageBox, QProgressDialog, QApplication, QMenu,
+    QProgressDialog, QApplication, QMenu, QHeaderView, QAbstractItemView,
 )
+from PyQt6.QtGui import QColor, QBrush
 
 from app.core.duplicates import find_duplicates
 from app.core.app_settings import load_setting, save_setting
 from app.core.logger import get_logger
+from app.ui.custom_dialog import CustomDialog
 
 log = get_logger(__name__)
 
 _SETTING_KEY = 'duplicates_finder.last_dir'
+
+# Cores alternadas para grupos (tons escuros sutis)
+_GROUP_COLORS = [
+    QColor(40, 42, 54),    # Padrão escuro
+    QColor(50, 52, 64),    # Levemente mais claro
+]
+
+
+def _human_size(size_bytes: int) -> str:
+    """Formata tamanho em bytes para leitura humana."""
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} KB"
+    elif size_bytes < 1024 * 1024 * 1024:
+        return f"{size_bytes / (1024 * 1024):.1f} MB"
+    else:
+        return f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
+
+
+def _elide_path(path: str, max_chars: int = 80) -> str:
+    """
+    Trunca um caminho de arquivo mantendo o início (drive/raiz) e o final (nome do arquivo).
+    Exemplo: /home/user/.../subdir/arquivo_muito_longo_que_nao_cab...ado.txt
+    """
+    if len(path) <= max_chars:
+        return path
+    
+    basename = os.path.basename(path)
+    dirname = os.path.dirname(path)
+    
+    # Se só o nome já é grande, truncar o nome
+    if len(basename) > max_chars - 10:
+        name, ext = os.path.splitext(basename)
+        available = max_chars - len(ext) - 3  # 3 para "..."
+        basename = name[:available] + "..." + ext
+        return basename
+    
+    # Truncar o diretório, mantendo início e nome do arquivo
+    available = max_chars - len(basename) - 5  # 5 para "/.../"
+    if available < 10:
+        return ".../" + basename
+    
+    # Mostrar início do diretório + ... + nome
+    return dirname[:available] + "/.../" + basename
 
 
 # ── Worker ────────────────────────────────────────────────────────────────────
@@ -66,7 +113,7 @@ class DuplicatesFinderWidget(QWidget):
         self._thread: Optional[QThread] = None
         self._worker: Optional[_ScanWorker] = None
         self._init_ui()
-        # Melhoria 1: pré-preencher com último diretório usado
+        # Pré-preencher com último diretório usado
         last_dir = load_setting(_SETTING_KEY)
         if last_dir and os.path.isdir(last_dir):
             self.ed_dir.setText(last_dir)
@@ -76,7 +123,7 @@ class DuplicatesFinderWidget(QWidget):
         root.setContentsMargins(12, 12, 12, 12)
         root.setSpacing(8)
 
-        # Linha de opções
+        # Linha 1: diretório
         row = QHBoxLayout()
         self.ed_dir = QLineEdit()
         self.ed_dir.setPlaceholderText('Pasta para escanear…')
@@ -89,6 +136,7 @@ class DuplicatesFinderWidget(QWidget):
         row.addWidget(btn_browse)
         row.addWidget(self.chk_recursive)
 
+        # Linha 2: filtros + ações
         row2 = QHBoxLayout()
         row2.addWidget(QLabel('Tamanho mínimo (KB):'))
         self.sp_min_kb = QSpinBox()
@@ -116,10 +164,30 @@ class DuplicatesFinderWidget(QWidget):
         row2.addWidget(self.btn_trash)
         row2.addWidget(self.btn_export)
 
-        # Tabela
-        self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(['Grupo', 'Tamanho', 'Caminho', 'Excluir?'])
-        self.table.horizontalHeader().setStretchLastSection(True)
+        # Tabela — configuração robusta contra overflow
+        self.table = QTableWidget(0, 5)
+        self.table.setHorizontalHeaderLabels(['Grupo', 'Tamanho', 'Nome', 'Caminho', 'Excluir?'])
+        
+        # Configurar colunas para não estourar
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # Grupo
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # Tamanho
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)       # Nome
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)           # Caminho (expande)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # Excluir?
+        header.setMinimumSectionSize(50)
+        
+        # Largura inicial razoável para "Nome"
+        self.table.setColumnWidth(2, 200)
+        
+        # Scroll horizontal caso necessário, mas evitar overflow visual
+        self.table.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.table.setWordWrap(False)
+        
+        # Seleção por linha inteira
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        
+        # Menu de contexto
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._on_table_context_menu)
 
@@ -136,11 +204,14 @@ class DuplicatesFinderWidget(QWidget):
         d = QFileDialog.getExistingDirectory(self, 'Escolher diretório')
         if d:
             self.ed_dir.setText(d)
-            save_setting(_SETTING_KEY, d)  # Melhoria 1: persiste último dir
+            save_setting(_SETTING_KEY, d)
 
     def _notify_tray(self, message: str) -> None:
-        from app.core.system_tray import notify_tray
-        notify_tray('Localizador de Duplicados', message)
+        try:
+            from app.core.system_tray import notify_tray
+            notify_tray('Localizador de Duplicados', message)
+        except Exception:
+            pass
 
     def _stop_thread(self) -> None:
         if self._worker:
@@ -162,7 +233,7 @@ class DuplicatesFinderWidget(QWidget):
     def _on_scan(self) -> None:
         directory = self.ed_dir.text().strip()
         if not directory or not os.path.isdir(directory):
-            QMessageBox.warning(self, 'Aviso', 'Selecione um diretório válido.')
+            CustomDialog.warning(self, 'Aviso', 'Selecione um diretório válido.')
             return
 
         self._stop_thread()
@@ -200,7 +271,7 @@ class DuplicatesFinderWidget(QWidget):
 
         def on_finished(groups: list) -> None:
             prog.close()
-            # Melhoria 3: ordenar por espaço desperdiçado desc (tamanho × cópias - 1)
+            # Ordenar por espaço desperdiçado desc (tamanho × cópias - 1)
             def _wasted(g: list) -> int:
                 try:
                     return os.path.getsize(g[0]) * (len(g) - 1) if g else 0
@@ -216,8 +287,10 @@ class DuplicatesFinderWidget(QWidget):
             self.btn_trash.setEnabled(has_groups)
             if groups:
                 total_files = sum(len(g) for g in groups)
+                total_wasted = sum(_wasted(g) for g in groups)
                 self.lbl_summary.setText(
-                    f'Encontrados {len(groups)} grupos de duplicados ({total_files} arquivos)'
+                    f'Encontrados {len(groups)} grupos de duplicados '
+                    f'({total_files} arquivos, ~{_human_size(total_wasted)} desperdiçados)'
                 )
                 self._notify_tray(f'Varredura concluída: {len(groups)} grupo(s) de duplicados.')
             else:
@@ -229,7 +302,7 @@ class DuplicatesFinderWidget(QWidget):
         def on_error(msg: str) -> None:
             prog.close()
             self.btn_scan.setEnabled(True)
-            QMessageBox.critical(self, 'Erro na Varredura', msg)
+            CustomDialog.critical(self, 'Erro na Varredura', msg)
             thread.quit(); thread.wait()
             worker.deleteLater(); thread.deleteLater()
             self._thread = None; self._worker = None
@@ -247,76 +320,159 @@ class DuplicatesFinderWidget(QWidget):
     # ── Tabela ────────────────────────────────────────────────────────────────
 
     def _populate_table(self, groups: list) -> None:
-        self.table.setRowCount(0)
-        grp_idx = 1
-        for g in groups:
-            size = os.path.getsize(g[0]) if g else 0
-            for path in g:
-                row = self.table.rowCount()
-                self.table.insertRow(row)
-                self.table.setItem(row, 0, QTableWidgetItem(str(grp_idx)))
-                self.table.setItem(row, 1, QTableWidgetItem(f'{size:,}'.replace(',', '.')))
-                item = QTableWidgetItem(path)
-                item.setToolTip(path)
-                self.table.setItem(row, 2, item)
-                chk = QTableWidgetItem('')
-                chk.setFlags(chk.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-                chk.setCheckState(Qt.CheckState.Unchecked)
-                self.table.setItem(row, 3, chk)
-            grp_idx += 1
+        """
+        Popula a tabela de resultados de forma eficiente.
+        
+        Otimizações:
+        - Desativa atualizações visuais durante inserção em massa
+        - Desativa ordenação durante inserção
+        - Pré-aloca o número total de linhas
+        - Usa cores alternadas por grupo para fácil identificação visual
+        - Trunca nomes longos com tooltip do caminho completo
+        """
+        # Desativar atualizações visuais para evitar re-layout a cada inserção
+        self.table.setUpdatesEnabled(False)
+        self.table.setSortingEnabled(False)
+        
+        try:
+            # Pré-calcular número total de linhas
+            total_rows = sum(len(g) for g in groups)
+            self.table.setRowCount(total_rows)
+            
+            current_row = 0
+            for grp_idx, g in enumerate(groups, start=1):
+                try:
+                    size = os.path.getsize(g[0]) if g else 0
+                except OSError:
+                    size = 0
+                
+                size_str = _human_size(size)
+                color = _GROUP_COLORS[grp_idx % len(_GROUP_COLORS)]
+                brush = QBrush(color)
+                
+                for path in g:
+                    basename = os.path.basename(path)
+                    dirname = os.path.dirname(path)
+                    
+                    # Coluna 0: Grupo
+                    item_grp = QTableWidgetItem(str(grp_idx))
+                    item_grp.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    item_grp.setBackground(brush)
+                    item_grp.setFlags(item_grp.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                    self.table.setItem(current_row, 0, item_grp)
+                    
+                    # Coluna 1: Tamanho
+                    item_size = QTableWidgetItem(size_str)
+                    item_size.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                    item_size.setBackground(brush)
+                    item_size.setFlags(item_size.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                    self.table.setItem(current_row, 1, item_size)
+                    
+                    # Coluna 2: Nome do arquivo (truncado se muito longo)
+                    display_name = basename
+                    if len(display_name) > 60:
+                        name_part, ext = os.path.splitext(display_name)
+                        display_name = name_part[:55] + "…" + ext
+                    item_name = QTableWidgetItem(display_name)
+                    item_name.setToolTip(basename)  # Nome completo no tooltip
+                    item_name.setBackground(brush)
+                    item_name.setFlags(item_name.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                    self.table.setItem(current_row, 2, item_name)
+                    
+                    # Coluna 3: Diretório (truncado, com tooltip do path completo)
+                    display_dir = _elide_path(dirname, max_chars=70)
+                    item_dir = QTableWidgetItem(display_dir)
+                    item_dir.setToolTip(path)  # Caminho completo no tooltip
+                    item_dir.setBackground(brush)
+                    item_dir.setFlags(item_dir.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                    # Guardar o path completo em data role para uso posterior
+                    item_dir.setData(Qt.ItemDataRole.UserRole, path)
+                    self.table.setItem(current_row, 3, item_dir)
+                    
+                    # Coluna 4: Checkbox de exclusão
+                    chk = QTableWidgetItem('')
+                    chk.setFlags(chk.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                    chk.setCheckState(Qt.CheckState.Unchecked)
+                    chk.setBackground(brush)
+                    chk.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.table.setItem(current_row, 4, chk)
+                    
+                    current_row += 1
+        
+        finally:
+            # Reativar atualizações visuais — dispara um único repaint
+            self.table.setSortingEnabled(True)
+            self.table.setUpdatesEnabled(True)
+
+    def _get_path_from_row(self, row: int) -> str:
+        """Retorna o caminho completo de um arquivo na linha da tabela."""
+        dir_item = self.table.item(row, 3)
+        if dir_item:
+            # Caminho completo guardado em UserRole
+            full_path = dir_item.data(Qt.ItemDataRole.UserRole)
+            if full_path:
+                return full_path
+            # Fallback: combinar nome + diretório
+            name_item = self.table.item(row, 2)
+            if name_item:
+                return os.path.join(dir_item.toolTip(), name_item.toolTip())
+        return ""
 
     def _on_select_keep_newest(self) -> None:
         if not self._groups:
             return
+        # Desmarcar todos primeiro
         for r in range(self.table.rowCount()):
-            it = self.table.item(r, 3)
+            it = self.table.item(r, 4)
             if it is not None:
                 it.setCheckState(Qt.CheckState.Unchecked)
+        
+        # Agrupar por ID de grupo e encontrar o mais recente
         groups_map: dict = {}
         for r in range(self.table.rowCount()):
-            grp_item  = self.table.item(r, 0)
-            path_item = self.table.item(r, 2)
-            if not grp_item or not path_item:
+            grp_item = self.table.item(r, 0)
+            if not grp_item:
                 continue
             try:
                 gid = int(grp_item.text())
             except ValueError:
                 continue
-            p = path_item.text()
+            p = self._get_path_from_row(r)
             try:
                 mt = os.path.getmtime(p)
             except OSError:
                 mt = 0.0
             groups_map.setdefault(gid, []).append((p, mt, r))
+        
         for gid, lst in groups_map.items():
             if len(lst) <= 1:
                 continue
             lst.sort(key=lambda t: t[1], reverse=True)
+            # Marcar todos exceto o mais recente
             for _, _, r in lst[1:]:
-                chk = self.table.item(r, 3)
+                chk = self.table.item(r, 4)
                 if chk is not None:
                     chk.setCheckState(Qt.CheckState.Checked)
 
     def _on_trash_selected(self) -> None:
         to_delete: list = []
         for r in range(self.table.rowCount()):
-            chk       = self.table.item(r, 3)
-            path_item = self.table.item(r, 2)
-            if not chk or not path_item:
+            chk = self.table.item(r, 4)
+            if not chk:
                 continue
             if chk.checkState() == Qt.CheckState.Checked:
-                to_delete.append(path_item.text())
+                path = self._get_path_from_row(r)
+                if path:
+                    to_delete.append(path)
         if not to_delete:
-            QMessageBox.information(self, 'Nada selecionado', 'Marque os arquivos a excluir.')
+            CustomDialog.information(self, 'Nada selecionado', 'Marque os arquivos a excluir.')
             return
         total_size = sum(os.path.getsize(p) for p in to_delete if os.path.exists(p))
-        size_mb = total_size / (1024 * 1024)
-        resp = QMessageBox.question(
+        resp = CustomDialog.question(
             self, 'Enviar para Lixeira',
-            f'Deletar {len(to_delete)} arquivo(s) para a Lixeira (~{size_mb:.2f} MB)?',
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            f'Deletar {len(to_delete)} arquivo(s) para a Lixeira (~{_human_size(total_size)})?',
         )
-        if resp != QMessageBox.StandardButton.Yes:
+        if not resp:
             return
         from send2trash import send2trash
         prog = QProgressDialog('Excluindo…', 'Cancelar', 0, len(to_delete), self)
@@ -346,9 +502,9 @@ class DuplicatesFinderWidget(QWidget):
         left = sum(len(g) for g in self._groups)
         msg = f'Exclusão concluída. Erros: {errors}. Restam {len(self._groups)} grupos ({left} arquivos).'
         if errors:
-            QMessageBox.warning(self, 'Concluído com erros', msg)
+            CustomDialog.warning(self, 'Concluído com erros', msg)
         else:
-            QMessageBox.information(self, 'Concluído', msg)
+            CustomDialog.information(self, 'Concluído', msg)
 
     def _on_export(self) -> None:
         if not self._groups:
@@ -362,27 +518,40 @@ class DuplicatesFinderWidget(QWidget):
         try:
             with open(path, 'w', newline='', encoding='utf-8') as f:
                 w = csv.writer(f)
-                w.writerow(['grupo', 'tamanho_bytes', 'caminho'])
+                w.writerow(['grupo', 'tamanho_bytes', 'tamanho_humano', 'nome', 'caminho_completo'])
                 for grp_idx, g in enumerate(self._groups, 1):
                     size = os.path.getsize(g[0]) if g else 0
                     for p in g:
-                        w.writerow([grp_idx, size, p])
-            QMessageBox.information(self, 'Exportado', f'Arquivo salvo em:\n{path}')
+                        w.writerow([grp_idx, size, _human_size(size), os.path.basename(p), p])
+            CustomDialog.information(self, 'Exportado', f'Arquivo salvo em:\n{path}')
         except Exception as e:
-            QMessageBox.critical(self, 'Erro', f'Falha ao exportar: {e}')
+            CustomDialog.critical(self, 'Erro', f'Falha ao exportar: {e}')
 
     def _on_table_context_menu(self, pos) -> None:
         index = self.table.indexAt(pos)
         if not index.isValid():
             return
-        path_item = self.table.item(index.row(), 2)
-        if not path_item:
+        path = self._get_path_from_row(index.row())
+        if not path:
             return
         menu = QMenu(self)
-        act_open = menu.addAction('Abrir pasta')
+        act_open = menu.addAction('📂 Abrir pasta')
+        act_copy_path = menu.addAction('📋 Copiar caminho')
+        menu.addSeparator()
+        act_toggle = menu.addAction('☑ Marcar/desmarcar para exclusão')
+        
         action = menu.exec(self.table.viewport().mapToGlobal(pos))
         if action == act_open:
-            self._open_in_folder(path_item.text())
+            self._open_in_folder(path)
+        elif action == act_copy_path:
+            QApplication.clipboard().setText(path)
+        elif action == act_toggle:
+            chk = self.table.item(index.row(), 4)
+            if chk:
+                new_state = (Qt.CheckState.Unchecked 
+                           if chk.checkState() == Qt.CheckState.Checked 
+                           else Qt.CheckState.Checked)
+                chk.setCheckState(new_state)
 
     def _open_in_folder(self, path: str) -> None:
         try:
@@ -394,7 +563,7 @@ class DuplicatesFinderWidget(QWidget):
                 folder = os.path.dirname(path) or '.'
                 subprocess.run(['xdg-open', folder], check=False)
         except Exception:
-            QMessageBox.warning(self, 'Aviso', 'Não foi possível abrir a pasta no explorador.')
+            CustomDialog.warning(self, 'Aviso', 'Não foi possível abrir a pasta no explorador.')
 
     # ── Limpeza ───────────────────────────────────────────────────────────────
 

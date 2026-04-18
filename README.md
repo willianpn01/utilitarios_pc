@@ -1,6 +1,6 @@
 # 🛠️ Aplicativo de Utilitários para PC
 
-Aplicação desktop completa em Python com PyQt6, oferecendo 8 ferramentas essenciais para produtividade e gerenciamento de arquivos.
+Aplicação desktop **multi-plataforma** em Python com PyQt6, oferecendo 8 ferramentas essenciais para produtividade e gerenciamento de arquivos. Funciona em **Windows**, **Linux** e **macOS**.
 
 ## ✨ Funcionalidades
 
@@ -41,7 +41,7 @@ Aplicação desktop completa em Python com PyQt6, oferecendo 8 ferramentas essen
 - **System Tray**: 
   - Minimize para bandeja do sistema
   - Notificações quando arquivos são organizados
-  - Opção de iniciar com o Windows
+  - Opção de iniciar com o sistema operacional
 
 ### 4. 🔍 Localizador de Duplicados
 - Encontre arquivos duplicados por conteúdo (hash SHA-256)
@@ -55,7 +55,7 @@ Aplicação desktop completa em Python com PyQt6, oferecendo 8 ferramentas essen
   - Seleção automática "manter o mais recente"
   - Enviar para Lixeira (seguro, reversível)
   - Exportar relatório CSV
-- Menu de contexto: abrir pasta no Explorer
+- Menu de contexto: abrir pasta no gerenciador de arquivos nativo
 
 ### 5. 💾 Analisador de Espaço em Disco
 - Analise o uso de espaço em pastas
@@ -67,7 +67,7 @@ Aplicação desktop completa em Python com PyQt6, oferecendo 8 ferramentas essen
   - Top 10 com distribuição visual
   - Tabela completa Top 20
   - Design moderno e responsivo
-- Abrir pasta no Explorer via menu de contexto
+- Abrir pasta no gerenciador de arquivos nativo via menu de contexto
 
 ### 6. 🔄 Comparador de Pastas
 - Compare duas pastas e identifique diferenças
@@ -123,7 +123,7 @@ Aplicação desktop completa em Python com PyQt6, oferecendo 8 ferramentas essen
 
 ### Pré-requisitos
 - Python 3.10+
-- Windows (testado), macOS ou Linux
+- Windows 10/11, Linux ou macOS
 
 ### Instalação
 
@@ -136,14 +136,21 @@ cd Utilitários
 2. Crie e ative o ambiente virtual:
 ```bash
 python -m venv .venv
-.venv\Scripts\activate  # Windows
-# ou
-source .venv/bin/activate  # macOS/Linux
+
+# Windows
+.venv\Scripts\activate
+
+# Linux / macOS
+source .venv/bin/activate
 ```
 
 3. Instale as dependências:
 ```bash
+# Produção
 pip install -r requirements.txt
+
+# Desenvolvimento (inclui pytest e ruff)
+pip install -r requirements-dev.txt
 ```
 
 ### Executar
@@ -154,34 +161,51 @@ python app/main.py
 
 ## 📦 Dependências
 
+### Produção
 - **PyQt6** (6.7.1): Framework de interface gráfica
 - **Pillow** (10.4.0): Processamento de imagens
 - **Send2Trash** (1.8.3): Exclusão segura para Lixeira
+- **watchdog** (4.0.0): Monitoramento de pastas em tempo real
+
+### Desenvolvimento
 - **pytest** (8.3.2): Testes automatizados
+- **ruff** (0.4+): Linter e formatador
 
 ## 📂 Estrutura do Projeto
 
 ```
 Utilitários/
 ├── app/
-│   ├── main.py                 # Ponto de entrada
+│   ├── main.py                 # Ponto de entrada (cross-platform)
 │   ├── core/                   # Lógica de negócio
+│   │   ├── app_paths.py        # Caminhos e helpers de plataforma
+│   │   ├── app_settings.py     # Persistência de configurações
+│   │   ├── autostart.py        # Autostart (Windows/Linux/macOS)
 │   │   ├── project_templates.py
 │   │   ├── batch_renamer.py
 │   │   ├── auto_organizer.py
+│   │   ├── folder_watcher.py
+│   │   ├── watcher_config.py
 │   │   ├── duplicates.py
 │   │   ├── space_analyzer.py
 │   │   ├── folder_compare.py
 │   │   ├── image_resizer.py
-│   │   └── clipboard_history.py
+│   │   ├── clipboard_history.py
+│   │   ├── system_tray.py
+│   │   └── logger.py
 │   ├── ui/                     # Interface gráfica
 │   │   ├── main_window.py
+│   │   ├── custom_dialog.py
 │   │   └── widgets/            # Widgets de cada funcionalidade
 │   └── assets/
 │       ├── styles/             # Temas QSS
 │       └── icons/              # Ícones SVG
-├── tests/                      # Testes automatizados
-├── requirements.txt
+├── tests/                      # 77 testes automatizados
+├── .github/workflows/ci.yml    # CI (Ubuntu + Windows)
+├── build.bat                   # Build Windows (Nuitka)
+├── build.sh                    # Build Linux (Nuitka)
+├── requirements.txt            # Dependências de produção
+├── requirements-dev.txt        # Dependências de desenvolvimento
 └── README.md
 ```
 
@@ -190,14 +214,30 @@ Utilitários/
 Execute os testes automatizados:
 
 ```bash
-pytest -v
+pytest tests/ -v
 ```
 
-Testes incluem:
-- Parse de regras do organizador
-- Detecção de conflitos
-- Build de plano de organização
-- Casos de borda
+Cobertura de testes (77 testes):
+- **app_paths**: Helpers de plataforma, resolução de caminhos, variáveis de ambiente
+- **auto_organizer**: Parse de regras, detecção de conflitos, plano de organização
+- **batch_renamer**: Regras de renomeação, preview, aplicação, rollback
+- **duplicates**: Hash de arquivos, detecção por conteúdo, filtros
+- **folder_compare**: Varredura, comparação por tamanho e conteúdo
+- **clipboard_history**: CRUD no SQLite, pin/unpin, busca, deduplicação
+
+## 🌐 Compatibilidade Multi-Sistema
+
+| Funcionalidade | Windows | Linux | macOS |
+|---|:---:|:---:|:---:|
+| Interface gráfica (PyQt6) | ✅ | ✅ | ✅ |
+| Instância única | ✅ Mutex | ✅ flock | ✅ flock |
+| Autostart | ✅ Registro | ✅ XDG .desktop | ✅ LaunchAgent |
+| System Tray | ✅ | ✅ | ✅ |
+| Abrir no gerenciador de arquivos | ✅ Explorer | ✅ xdg-open | ✅ Finder |
+| Monitoramento (Watchdog) | ✅ | ✅ | ✅ |
+| Organização de arquivos | ✅ | ✅ | ✅ |
+| Clipboard history (SQLite) | ✅ | ✅ | ✅ |
+| Build (Nuitka) | ✅ build.bat | ✅ build.sh | ✅ build.sh |
 
 ## 🎨 Personalização
 
@@ -209,7 +249,7 @@ Edite `app/core/project_templates.py` para adicionar novos templates predefinido
 
 ## 🔒 Segurança e Privacidade
 
-- **Histórico da Área de Transferência**: armazenado localmente em `~/.utilitarios/clipboard_history.db`
+- **Dados locais**: tudo armazenado em `~/.utilitarios/`
 - **Exclusão de arquivos**: usa Send2Trash (reversível via Lixeira)
 - **Sem telemetria**: nenhum dado é enviado para servidores externos
 
@@ -232,4 +272,4 @@ Este projeto é de código aberto. Consulte o arquivo LICENSE para mais detalhes
 
 ---
 
-**Desenvolvido com ❤️ usando Python e PyQt6**
+**Desenvolvido com ❤️ usando Python e PyQt6 — Funciona em Windows, Linux e macOS**

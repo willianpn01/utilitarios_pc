@@ -1,0 +1,170 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Dispara quando você cria uma tag como v1.2.0
+  workflow_dispatch:  # Permite disparar manualmente pelo GitHub
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: UtilitariosPC-Windows
+            output_name: UtilitariosPC.exe
+            build_script: |
+              python -m nuitka ^
+                --standalone ^
+                --onefile ^
+                --windows-console-mode=disable ^
+                --windows-icon-from-ico=app/icone.ico ^
+                --enable-plugin=pyqt6 ^
+                --include-data-dir=app/assets=app/assets ^
+                --include-data-files=app/icone.ico=app/icone.ico ^
+                --include-package=app ^
+                --include-package=app.core ^
+                --include-package=app.ui ^
+                --include-package=app.ui.widgets ^
+                --output-dir=dist ^
+                --output-filename=UtilitariosPC.exe ^
+                --company-name="Projeto Utilitarios" ^
+                --product-name="Utilitarios PC" ^
+                --file-version=${{ github.ref_name }}.0 ^
+                --product-version=${{ github.ref_name }}.0 ^
+                --file-description="Suite de utilitarios para organizacao de arquivos e produtividade" ^
+                --copyright="Copyright (C) 2026 Projeto Utilitarios" ^
+                --remove-output ^
+                --assume-yes-for-downloads ^
+                app/main.py
+
+          - os: ubuntu-22.04
+            artifact_name: UtilitariosPC-Linux
+            output_name: UtilitariosPC
+            build_script: |
+              python -m nuitka \
+                --standalone \
+                --onefile \
+                --enable-plugin=pyqt6 \
+                --include-data-dir=app/assets=app/assets \
+                --include-data-files=app/icone.ico=app/icone.ico \
+                --include-package=app \
+                --include-package=app.core \
+                --include-package=app.ui \
+                --include-package=app.ui.widgets \
+                --output-dir=dist \
+                --output-filename=UtilitariosPC \
+                --remove-output \
+                --assume-yes-for-downloads \
+                app/main.py
+
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install nuitka ordered-set zstandard
+
+      # Linux: instalar dependências de sistema para Qt
+      - name: Install Linux system deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y patchelf ccache libgl1 libegl1
+
+      - name: Run tests
+        run: |
+          pip install pytest
+          python -m pytest tests/ -v --tb=short
+
+      - name: Build with Nuitka
+        run: ${{ matrix.build_script }}
+
+      # Linux: gerar arquivo .desktop junto ao executável
+      - name: Generate .desktop file (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cat > dist/utilitarios-pc.desktop << 'EOF'
+          [Desktop Entry]
+          Type=Application
+          Name=Utilitários PC
+          Comment=Suite de utilitários para organização de arquivos e produtividade
+          Exec=./UtilitariosPC
+          Icon=utilities-file-archiver
+          Terminal=false
+          Categories=Utility;FileTools;
+          StartupNotify=true
+          EOF
+          chmod +x dist/UtilitariosPC
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            dist/${{ matrix.output_name }}
+            dist/utilitarios-pc.desktop
+          if-no-files-found: error
+
+  # ── Release automática ──────────────────────────────────────────────────────
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: UtilitariosPC-Windows
+          path: artifacts/windows
+
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: UtilitariosPC-Linux
+          path: artifacts/linux
+
+      # Empacotar Linux em .tar.gz
+      - name: Package Linux release
+        run: |
+          cd artifacts/linux
+          chmod +x UtilitariosPC 2>/dev/null || true
+          tar czf ../UtilitariosPC-Linux-${{ github.ref_name }}.tar.gz *
+
+      # Criar release no GitHub
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Utilitários PC ${{ github.ref_name }}
+          body: |
+            ## Utilitários PC ${{ github.ref_name }}
+            
+            Suite de utilitários multi-plataforma para organização de arquivos e produtividade.
+            
+            ### Downloads
+            - **Windows**: `UtilitariosPC.exe` — executável standalone, basta baixar e rodar
+            - **Linux**: `UtilitariosPC-Linux-${{ github.ref_name }}.tar.gz` — extrair e executar `./UtilitariosPC`
+            
+            ### Requisitos
+            - Windows 10/11 (64-bit) ou Linux (Ubuntu 20.04+, Fedora 36+)
+            - Nenhuma instalação adicional necessária
+          files: |
+            artifacts/windows/UtilitariosPC.exe
+            artifacts/UtilitariosPC-Linux-${{ github.ref_name }}.tar.gz
+          draft: false
+          prerelease: false

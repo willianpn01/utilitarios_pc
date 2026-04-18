@@ -1,8 +1,8 @@
 import logging
-import os
 import sys
 from pathlib import Path
 from logging.handlers import RotatingFileHandler
+from app.core.app_paths import get_log_dir
 from app.core.app_settings import load_setting, save_setting
 
 _logger = None
@@ -12,10 +12,7 @@ def get_logger(name="UtilitariosPC"):
     if _logger is not None:
         return logging.getLogger(name)
     
-    appdata = os.getenv('APPDATA') or os.path.expanduser('~')
-    log_dir = Path(appdata) / 'UtilitariosPC' / 'logs'
-    log_dir.mkdir(parents=True, exist_ok=True)
-    
+    log_dir = Path(get_log_dir())
     log_file = log_dir / 'app.log'
     
     _logger = logging.getLogger("UtilitariosPC")

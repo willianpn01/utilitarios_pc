@@ -5,7 +5,7 @@ from typing import List
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QFileDialog, QCheckBox, QTextEdit, QTableWidget, QTableWidgetItem,
-    QMessageBox, QTabWidget, QDialog, QListWidget, QListWidgetItem,
+    QTabWidget, QDialog, QListWidget, QListWidgetItem,
     QDialogButtonBox, QApplication
 )
 from PyQt6.QtGui import QTextCharFormat, QColor, QTextCursor
@@ -172,7 +172,7 @@ class AutoOrganizerWidget(QWidget):
         cat = self.input_cat.text().strip()
         exts = self.input_exts.text().strip()
         if not cat or not exts:
-            QMessageBox.warning(self, 'Aviso', 'Informe a categoria e as extensões.')
+            CustomDialog.warning(self, 'Aviso', 'Informe a categoria e as extensões.')
             return
         # Normalize to ".ext, .ext2" format
         parts = [p.strip() for p in exts.split(',') if p.strip()]
@@ -264,7 +264,7 @@ class AutoOrganizerWidget(QWidget):
             self._update_rules_summary()
             self._save_settings()
         except Exception as e:
-            QMessageBox.critical(self, 'Erro', f'Falha ao importar: {e}')
+            CustomDialog.critical(self, 'Erro', f'Falha ao importar: {e}')
 
     def _on_rules_export(self) -> None:
         path, _ = QFileDialog.getSaveFileName(self, 'Exportar regras', 'regras.txt', 'Text Files (*.txt);;All Files (*)')
@@ -274,7 +274,7 @@ class AutoOrganizerWidget(QWidget):
             with open(path, 'w', encoding='utf-8') as f:
                 f.write(self.rules_text.toPlainText())
         except Exception as e:
-            QMessageBox.critical(self, 'Erro', f'Falha ao exportar: {e}')
+            CustomDialog.critical(self, 'Erro', f'Falha ao exportar: {e}')
 
     def _load_settings(self) -> None:
         s = QSettings()
@@ -332,7 +332,7 @@ class AutoOrganizerWidget(QWidget):
     def _on_preview(self) -> None:
         directory = self.dir_edit.text().strip()
         if not directory or not os.path.isdir(directory):
-            QMessageBox.warning(self, 'Aviso', 'Selecione uma pasta válida.')
+            CustomDialog.warning(self, 'Aviso', 'Selecione uma pasta válida.')
             return
         rule = parse_rules(self.rules_text.toPlainText())
         # validar conflitos
@@ -341,7 +341,7 @@ class AutoOrganizerWidget(QWidget):
             msg = 'Existem extensões atribuídas a múltiplas categorias:\n' + '\n'.join(
                 f"{ext}: {', '.join(sorted(cats))}" for ext, cats in conflicts.items()
             )
-            QMessageBox.warning(self, 'Conflitos de regras', msg)
+            CustomDialog.warning(self, 'Conflitos de regras', msg)
             return
         rule.recursive = self.recursive.isChecked()
         
@@ -397,7 +397,7 @@ class AutoOrganizerWidget(QWidget):
             prog.close()
             self.btn_preview.setEnabled(True)
             self.btn_apply.setEnabled(True)
-            QMessageBox.critical(self, 'Erro', f'Falha ao gerar prévia: {msg}')
+            CustomDialog.critical(self, 'Erro', f'Falha ao gerar prévia: {msg}')
             thread.quit()
             thread.wait()
             worker.deleteLater()
@@ -433,11 +433,11 @@ class AutoOrganizerWidget(QWidget):
         if self._applying:
             return
         if not self._plan:
-            QMessageBox.information(self, 'Info', 'Gere uma prévia antes de aplicar.')
+            CustomDialog.information(self, 'Info', 'Gere uma prévia antes de aplicar.')
             return
         # Segurança: confirmar
-        resp = QMessageBox.question(self, 'Confirmar', 'Aplicar o plano de organização agora?', QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if resp != QMessageBox.StandardButton.Yes:
+        resp = CustomDialog.question(self, 'Confirmar', 'Aplicar o plano de organização agora?')
+        if not resp:
             return
         from PyQt6.QtWidgets import QProgressDialog
         total = sum(1 for i in self._plan if i.action == 'move')
@@ -511,9 +511,9 @@ class AutoOrganizerWidget(QWidget):
             self.summary.setText(f"Aplicado: movidos {moved}, pulados {skipped}, erros {errors}")
             extra = f"\nHistórico salvo (use 📜 Histórico para ver)" if moved > 0 else ''
             if errors:
-                QMessageBox.warning(self, 'Concluído com erros', f"Movidos: {moved}\nPulados: {skipped}\nErros: {errors}{extra}")
+                CustomDialog.warning(self, 'Concluído com erros', f"Movidos: {moved}\nPulados: {skipped}\nErros: {errors}{extra}")
             else:
-                QMessageBox.information(self, 'Concluído', f"Movidos: {moved}\nPulados: {skipped}{extra}")
+                CustomDialog.information(self, 'Concluído', f"Movidos: {moved}\nPulados: {skipped}{extra}")
             # Após aplicar, atualizar tabela (alguns itens podem ter virado 'error')
             self._update_table_from_plan()
             thread.quit(); thread.wait(); worker.deleteLater(); thread.deleteLater()
@@ -535,8 +535,8 @@ class AutoOrganizerWidget(QWidget):
                 return
             undo_file = path
         # Confirmar
-        resp = QMessageBox.question(self, 'Confirmar desfazer', f'Deseja desfazer as movimentações usando:\n{undo_file}?', QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if resp != QMessageBox.StandardButton.Yes:
+        resp = CustomDialog.question(self, 'Confirmar desfazer', f'Deseja desfazer as movimentações usando:\n{undo_file}?')
+        if not resp:
             return
         # Ler CSV e desfazer
         from PyQt6.QtWidgets import QProgressDialog
@@ -550,10 +550,10 @@ class AutoOrganizerWidget(QWidget):
                         src, dst = row[0], row[1]
                         moves.append((src, dst))
         except Exception as e:
-            QMessageBox.critical(self, 'Erro', f'Falha ao ler CSV: {e}')
+            CustomDialog.critical(self, 'Erro', f'Falha ao ler CSV: {e}')
             return
         if not moves:
-            QMessageBox.information(self, 'Nada a desfazer', 'O arquivo de desfazer está vazio.')
+            CustomDialog.information(self, 'Nada a desfazer', 'O arquivo de desfazer está vazio.')
             return
         # desfazer na ordem inversa para segurança
         moves.reverse()
@@ -590,16 +590,16 @@ class AutoOrganizerWidget(QWidget):
         prog.close()
         self.summary.setText(f"Desfazer: retornados {moved_back}, ignorados {skipped}, erros {errors}")
         if errors:
-            QMessageBox.warning(self, 'Desfazer concluído com erros', f"Retornados: {moved_back}\nIgnorados: {skipped}\nErros: {errors}")
+            CustomDialog.warning(self, 'Desfazer concluído com erros', f"Retornados: {moved_back}\nIgnorados: {skipped}\nErros: {errors}")
         else:
-            QMessageBox.information(self, 'Desfazer concluído', f"Retornados: {moved_back}\nIgnorados: {skipped}")
+            CustomDialog.information(self, 'Desfazer concluído', f"Retornados: {moved_back}\nIgnorados: {skipped}")
     
     def _on_view_history(self) -> None:
         """Mostra diálogo com histórico de operações de organização."""
         files = self._get_undo_files()
         
         if not files:
-            QMessageBox.information(
+            CustomDialog.information(
                 self, 'Histórico Vazio',
                 f"Nenhum histórico de organização encontrado.\n\n"
                 f"Diretório de histórico:\n{get_undo_history_dir()}"
@@ -665,7 +665,7 @@ class AutoOrganizerWidget(QWidget):
         def on_undo():
             item = list_widget.currentItem()
             if not item:
-                QMessageBox.warning(dialog, 'Aviso', 'Selecione um item.')
+                CustomDialog.warning(dialog, 'Aviso', 'Selecione um item.')
                 return
             filepath = item.data(Qt.ItemDataRole.UserRole)
             dialog.accept()
@@ -674,28 +674,31 @@ class AutoOrganizerWidget(QWidget):
         
         def on_open_folder():
             import subprocess
+            import sys as _sys
             undo_dir = get_undo_history_dir()
-            if os.name == 'nt':
+            if _sys.platform.startswith('win'):
                 subprocess.Popen(['explorer', undo_dir])
+            elif _sys.platform == 'darwin':
+                subprocess.Popen(['open', undo_dir])
             else:
                 subprocess.Popen(['xdg-open', undo_dir])
         
         def on_delete():
             item = list_widget.currentItem()
             if not item:
-                QMessageBox.warning(dialog, 'Aviso', 'Selecione um item.')
+                CustomDialog.warning(dialog, 'Aviso', 'Selecione um item.')
                 return
             filepath = item.data(Qt.ItemDataRole.UserRole)
-            resp = QMessageBox.question(
+            resp = CustomDialog.question(
                 dialog, 'Confirmar',
                 f'Excluir este registro de histórico?\n{os.path.basename(filepath)}'
             )
-            if resp == QMessageBox.StandardButton.Yes:
+            if resp:
                 try:
                     os.remove(filepath)
                     list_widget.takeItem(list_widget.row(item))
                 except Exception as e:
-                    QMessageBox.critical(dialog, 'Erro', f'Falha ao excluir: {e}')
+                    CustomDialog.critical(dialog, 'Erro', f'Falha ao excluir: {e}')
         
         btn_undo.clicked.connect(on_undo)
         btn_open_folder.clicked.connect(on_open_folder)

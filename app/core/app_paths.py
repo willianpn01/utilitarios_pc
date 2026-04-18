@@ -3,11 +3,12 @@ App Paths - Gerenciamento centralizado de caminhos do aplicativo.
 
 Este módulo centraliza todos os caminhos usados pelo aplicativo,
 facilitando a configuração para instaladores e desinstaladores.
+Suporta Windows, Linux e macOS.
 """
 from __future__ import annotations
 
 import os
-import platform
+import sys
 from typing import Optional
 
 # Nome do aplicativo (usado em vários lugares)
@@ -15,10 +16,29 @@ APP_NAME = "UtilitariosPC"
 APP_ORG = "Projeto Utilitarios"
 APP_DISPLAY_NAME = "Utilitários PC"
 
-# Registro do Windows
+# Registro do Windows (usado apenas no Windows)
 REGISTRY_RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 REGISTRY_SETTINGS_KEY = rf"Software\{APP_ORG}\{APP_DISPLAY_NAME}"
 
+
+# ── Helpers de Plataforma ─────────────────────────────────────────────────────
+
+def is_windows() -> bool:
+    """Retorna True se estiver rodando no Windows."""
+    return sys.platform.startswith('win')
+
+
+def is_linux() -> bool:
+    """Retorna True se estiver rodando no Linux."""
+    return sys.platform.startswith('linux')
+
+
+def is_macos() -> bool:
+    """Retorna True se estiver rodando no macOS."""
+    return sys.platform == 'darwin'
+
+
+# ── Diretórios de Dados ───────────────────────────────────────────────────────
 
 def get_data_dir() -> str:
     """
@@ -41,6 +61,20 @@ def get_data_dir() -> str:
     return data_dir
 
 
+def get_config_dir() -> str:
+    """Retorna o diretório de configurações do aplicativo."""
+    config_dir = os.path.join(get_data_dir(), "config")
+    os.makedirs(config_dir, exist_ok=True)
+    return config_dir
+
+
+def get_log_dir() -> str:
+    """Retorna o diretório de logs do aplicativo."""
+    log_dir = os.path.join(get_data_dir(), "logs")
+    os.makedirs(log_dir, exist_ok=True)
+    return log_dir
+
+
 def get_undo_history_dir() -> str:
     """Retorna o diretório de histórico de undo."""
     undo_dir = os.path.join(get_data_dir(), "undo_history")
@@ -58,6 +92,16 @@ def get_clipboard_db_path() -> str:
     return os.path.join(get_data_dir(), "clipboard_history.db")
 
 
+def get_lock_file_path() -> str:
+    """Retorna o caminho do arquivo de lock para instância única."""
+    return os.path.join(get_data_dir(), "app.lock")
+
+
+def get_settings_path() -> str:
+    """Retorna o caminho do arquivo de configurações."""
+    return os.path.join(get_data_dir(), "settings.json")
+
+
 def get_all_data_paths() -> dict:
     """
     Retorna um dicionário com todos os caminhos de dados do aplicativo.
@@ -66,9 +110,13 @@ def get_all_data_paths() -> dict:
     """
     return {
         "data_dir": get_data_dir(),
+        "config_dir": get_config_dir(),
+        "log_dir": get_log_dir(),
         "undo_history": get_undo_history_dir(),
         "watcher_config": get_watcher_config_path(),
         "clipboard_db": get_clipboard_db_path(),
+        "settings": get_settings_path(),
+        "lock_file": get_lock_file_path(),
     }
 
 
@@ -77,7 +125,11 @@ def get_registry_paths() -> dict:
     Retorna caminhos do registro do Windows usados pelo aplicativo.
     
     Útil para desinstaladores removerem entradas do registro.
+    Retorna dicionário vazio em sistemas não-Windows.
     """
+    if not is_windows():
+        return {}
+    
     return {
         "autostart": {
             "key": REGISTRY_RUN_KEY,
@@ -114,7 +166,7 @@ def remove_all_data() -> dict:
         results["data_dir"] = f"error: {e}"
     
     # Remover entradas do registro (Windows)
-    if platform.system() == 'Windows':
+    if is_windows():
         try:
             import winreg
             
@@ -141,6 +193,30 @@ def remove_all_data() -> dict:
         except ImportError:
             results["registry"] = "winreg not available"
     
+    # Remover autostart no Linux
+    if is_linux():
+        desktop_file = os.path.expanduser("~/.config/autostart/utilitarios-pc.desktop")
+        try:
+            if os.path.exists(desktop_file):
+                os.remove(desktop_file)
+                results["linux_autostart"] = "removed"
+            else:
+                results["linux_autostart"] = "not_found"
+        except Exception as e:
+            results["linux_autostart"] = f"error: {e}"
+    
+    # Remover autostart no macOS
+    if is_macos():
+        plist_file = os.path.expanduser("~/Library/LaunchAgents/com.utilitarios.pc.plist")
+        try:
+            if os.path.exists(plist_file):
+                os.remove(plist_file)
+                results["macos_autostart"] = "removed"
+            else:
+                results["macos_autostart"] = "not_found"
+        except Exception as e:
+            results["macos_autostart"] = f"error: {e}"
+    
     return results
 
 
@@ -150,16 +226,28 @@ def print_data_locations():
     print(f"Dados do {APP_DISPLAY_NAME}")
     print("=" * 50)
     
+    # Plataforma
+    platform_name = "Windows" if is_windows() else ("Linux" if is_linux() else ("macOS" if is_macos() else "Desconhecido"))
+    print(f"  Plataforma: {platform_name}")
+    print()
+    
     paths = get_all_data_paths()
     for name, path in paths.items():
         exists = "✓" if os.path.exists(path) else "✗"
         print(f"  [{exists}] {name}: {path}")
     
-    print()
-    print("Registro do Windows:")
-    registry = get_registry_paths()
-    for name, info in registry.items():
-        print(f"  - {name}: {info['hive']}\\{info['key']}")
+    if is_windows():
+        print()
+        print("Registro do Windows:")
+        registry = get_registry_paths()
+        for name, info in registry.items():
+            print(f"  - {name}: {info['hive']}\\{info['key']}")
+    
+    if is_linux():
+        print()
+        desktop_file = os.path.expanduser("~/.config/autostart/utilitarios-pc.desktop")
+        exists = "✓" if os.path.exists(desktop_file) else "✗"
+        print(f"  [{exists}] Autostart (XDG): {desktop_file}")
     
     print("=" * 50)
 

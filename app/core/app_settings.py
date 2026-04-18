@@ -1,8 +1,8 @@
 """
 Utilitários PC — Gerenciamento de configurações persistentes.
 
-As configurações são salvas em JSON no AppData do usuário:
-  %APPDATA%\\UtilitariosPC\\settings.json
+As configurações são salvas em JSON no diretório de dados do aplicativo:
+  ~/.utilitarios/settings.json
 """
 from __future__ import annotations
 import json
@@ -10,12 +10,11 @@ import os
 from pathlib import Path
 from typing import Any
 
+from app.core.app_paths import get_settings_path
+
 
 def _settings_path() -> Path:
-    appdata = os.getenv('APPDATA') or os.path.expanduser('~')
-    directory = Path(appdata) / 'UtilitariosPC'
-    directory.mkdir(parents=True, exist_ok=True)
-    return directory / 'settings.json'
+    return Path(get_settings_path())
 
 
 def _load_all() -> dict:

@@ -13,7 +13,7 @@ from typing import Optional
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QFileDialog, QTableWidget, QTableWidgetItem, QHeaderView,
-    QMessageBox, QTextEdit, QCheckBox, QGroupBox, QSplitter,
+    QTextEdit, QCheckBox, QGroupBox, QSplitter,
     QAbstractItemView, QDialog, QDialogButtonBox, QFormLayout
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
@@ -94,14 +94,14 @@ class AddWatchDialog(QDialog):
     def _validate_and_accept(self):
         path = self.path_edit.text().strip()
         if not path:
-            QMessageBox.warning(self, "Aviso", "Selecione uma pasta.")
+            CustomDialog.warning(self, "Aviso", "Selecione uma pasta.")
             return
         if not os.path.isdir(path):
-            QMessageBox.warning(self, "Aviso", "A pasta selecionada não existe.")
+            CustomDialog.warning(self, "Aviso", "A pasta selecionada não existe.")
             return
         rules = self.rules_text.toPlainText().strip()
         if not rules:
-            QMessageBox.warning(self, "Aviso", "Defina pelo menos uma regra.")
+            CustomDialog.warning(self, "Aviso", "Defina pelo menos uma regra.")
             return
         self.accept()
     
@@ -265,7 +265,7 @@ class FolderWatcherWidget(QWidget):
             self.chk_autostart.setChecked(not enabled)
             self.chk_autostart.blockSignals(False)
             
-            QMessageBox.warning(
+            CustomDialog.warning(
                 self, "Erro",
                 "Não foi possível alterar a configuração de início automático."
             )
@@ -275,7 +275,7 @@ class FolderWatcherWidget(QWidget):
         from PyQt6.QtCore import QSettings
         settings = QSettings()
         settings.remove('app/close_action')
-        QMessageBox.information(
+        CustomDialog.information(
             self, "Preferência Resetada",
             "A preferência de fechamento foi removida.\n\n"
             "Na próxima vez que você fechar a janela, será perguntado novamente."
@@ -354,7 +354,7 @@ class FolderWatcherWidget(QWidget):
         """Inicia monitoramento."""
         configs = self._watcher.get_all_configs()
         if not configs:
-            QMessageBox.information(
+            CustomDialog.information(
                 self, "Aviso",
                 "Adicione pelo menos uma pasta antes de iniciar o monitoramento."
             )
@@ -394,7 +394,7 @@ class FolderWatcherWidget(QWidget):
             # Verificar duplicata
             for existing in self._watcher.get_all_configs():
                 if os.path.normpath(existing.path) == os.path.normpath(config.path):
-                    QMessageBox.warning(
+                    CustomDialog.warning(
                         self, "Aviso",
                         "Esta pasta já está sendo monitorada."
                     )
@@ -410,7 +410,7 @@ class FolderWatcherWidget(QWidget):
         """Edita pasta selecionada."""
         row = self.table.currentRow()
         if row < 0:
-            QMessageBox.information(self, "Aviso", "Selecione uma pasta para editar.")
+            CustomDialog.information(self, "Aviso", "Selecione uma pasta para editar.")
             return
         
         configs = self._watcher.get_all_configs()
@@ -438,7 +438,7 @@ class FolderWatcherWidget(QWidget):
         """Remove pasta selecionada."""
         row = self.table.currentRow()
         if row < 0:
-            QMessageBox.information(self, "Aviso", "Selecione uma pasta para remover.")
+            CustomDialog.information(self, "Aviso", "Selecione uma pasta para remover.")
             return
         
         configs = self._watcher.get_all_configs()
@@ -447,13 +447,12 @@ class FolderWatcherWidget(QWidget):
         
         config = configs[row]
         
-        resp = QMessageBox.question(
+        resp = CustomDialog.question(
             self, "Confirmar",
-            f"Remover monitoramento da pasta?\n{config.path}",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            f"Remover monitoramento da pasta?\n{config.path}"
         )
         
-        if resp == QMessageBox.StandardButton.Yes:
+        if resp:
             self._watcher.remove_watch(config.path)
             remove_watch_config(config.path)
             self._refresh_table()

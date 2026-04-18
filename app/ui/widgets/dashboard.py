@@ -67,7 +67,8 @@ class DashboardWidget(QWidget):
         system_layout.addWidget(self.lbl_python, 1, 1)
         system_layout.addWidget(QLabel('Usuário:'), 2, 0)
         system_layout.addWidget(self.lbl_user, 2, 1)
-        system_layout.addWidget(QLabel('Espaço em Disco (C:):'), 3, 0)
+        disk_label = 'Espaço em Disco (C:):' if platform.system() == 'Windows' else 'Espaço em Disco (/):'
+        system_layout.addWidget(QLabel(disk_label), 3, 0)
         system_layout.addWidget(self.lbl_disk_c, 3, 1)
         system_layout.addWidget(QLabel('Data/Hora:'), 4, 0)
         system_layout.addWidget(self.lbl_time, 4, 1)

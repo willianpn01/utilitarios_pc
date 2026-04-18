@@ -5,7 +5,7 @@ from typing import Optional, List
 from PyQt6.QtCore import QObject, QThread, pyqtSignal, Qt
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QFileDialog, QMessageBox, QSpinBox, QGroupBox, QGridLayout,
+    QFileDialog, QSpinBox, QGroupBox, QGridLayout,
     QProgressDialog, QRadioButton, QButtonGroup, QComboBox, QCheckBox,
     QTableWidget, QTableWidgetItem
 )
@@ -335,26 +335,26 @@ class ImageResizerWidget(QWidget):
         if is_batch:
             # Modo lote
             if not src_path or not os.path.isdir(src_path):
-                QMessageBox.warning(self, 'Aviso', 'Selecione uma pasta de origem válida.')
+                CustomDialog.warning(self, 'Aviso', 'Selecione uma pasta de origem válida.')
                 return
             if not dst_path:
-                QMessageBox.warning(self, 'Aviso', 'Selecione uma pasta de destino.')
+                CustomDialog.warning(self, 'Aviso', 'Selecione uma pasta de destino.')
                 return
             
             # Verificar se há imagens
             images = get_image_files(src_path, self.recursive_chk.isChecked())
             if not images:
-                QMessageBox.warning(self, 'Aviso', 'Nenhuma imagem encontrada na pasta de origem.')
+                CustomDialog.warning(self, 'Aviso', 'Nenhuma imagem encontrada na pasta de origem.')
                 return
             
             num_images = len(images)
         else:
             # Modo imagem única
             if not src_path or not os.path.isfile(src_path):
-                QMessageBox.warning(self, 'Aviso', 'Selecione um arquivo de imagem válido.')
+                CustomDialog.warning(self, 'Aviso', 'Selecione um arquivo de imagem válido.')
                 return
             if not dst_path:
-                QMessageBox.warning(self, 'Aviso', 'Especifique o caminho de saída.')
+                CustomDialog.warning(self, 'Aviso', 'Especifique o caminho de saída.')
                 return
             
             num_images = 1
@@ -383,13 +383,12 @@ class ImageResizerWidget(QWidget):
         options.preserve_exif = self.preserve_exif_chk.isChecked()
         
         # Confirmar
-        resp = QMessageBox.question(
+        resp = CustomDialog.question(
             self,
             'Confirmar',
-            f'Processar {num_images} imagem(ns)?',
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            f'Processar {num_images} imagem(ns)?'
         )
-        if resp != QMessageBox.StandardButton.Yes:
+        if not resp:
             return
         
         # Processar
@@ -426,7 +425,7 @@ class ImageResizerWidget(QWidget):
                 self._populate_results(results)
                 self._update_summary(results)
             else:
-                QMessageBox.warning(self, 'Erro', 'Falha ao processar imagens.')
+                CustomDialog.warning(self, 'Erro', 'Falha ao processar imagens.')
             self.btn_process.setEnabled(True)
             thread.quit()
             thread.wait()
@@ -453,13 +452,13 @@ class ImageResizerWidget(QWidget):
         if result.success:
             self._populate_results([result])
             self._update_summary([result])
-            QMessageBox.information(
+            CustomDialog.information(
                 self,
                 'Sucesso',
                 f'Imagem processada com sucesso!\n\nSalva em: {dst_file}'
             )
         else:
-            QMessageBox.critical(
+            CustomDialog.critical(
                 self,
                 'Erro',
                 f'Falha ao processar imagem:\n{result.error_msg}'

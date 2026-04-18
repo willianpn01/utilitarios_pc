@@ -9,7 +9,7 @@ from typing import Optional
 from PyQt6.QtCore import QObject, QThread, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QFileDialog, QTreeWidget, QTreeWidgetItem, QMessageBox, QSpinBox,
+    QFileDialog, QTreeWidget, QTreeWidgetItem, QSpinBox,
     QGroupBox, QGridLayout, QProgressDialog, QMenu, QApplication,
 )
 from PyQt6.QtGui import QColor
@@ -179,7 +179,7 @@ class SpaceAnalyzerWidget(QWidget):
     def _on_scan(self) -> None:
         directory = self.dir_edit.text().strip()
         if not directory or not os.path.isdir(directory):
-            QMessageBox.warning(self, 'Aviso', 'Selecione uma pasta válida.')
+            CustomDialog.warning(self, 'Aviso', 'Selecione uma pasta válida.')
             return
 
         self._stop_thread()
@@ -223,7 +223,7 @@ class SpaceAnalyzerWidget(QWidget):
                         f'Análise de espaço concluída: {format_size(entry.size)} em {entry.file_count} arquivo(s).'
                     )
             else:
-                QMessageBox.warning(self, 'Aviso', 'Análise cancelada ou sem resultado.')
+                CustomDialog.warning(self, 'Aviso', 'Análise cancelada ou sem resultado.')
                 self.btn_export.setEnabled(False)
             self.btn_scan.setEnabled(True)
             thread.quit(); thread.wait()
@@ -233,7 +233,7 @@ class SpaceAnalyzerWidget(QWidget):
         def on_error(msg: str) -> None:
             prog.close()
             self.btn_scan.setEnabled(True)
-            QMessageBox.critical(self, 'Erro na Análise', msg)
+            CustomDialog.critical(self, 'Erro na Análise', msg)
             thread.quit(); thread.wait()
             worker.deleteLater(); thread.deleteLater()
             self._thread = None; self._worker = None
@@ -319,7 +319,7 @@ class SpaceAnalyzerWidget(QWidget):
         if not path:
             return
         if not os.path.exists(path):
-            QMessageBox.warning(self, 'Item não encontrado',
+            CustomDialog.warning(self, 'Item não encontrado',
                                 f'O caminho não existe mais no disco:\n{path}')
             return
         self._open_in_explorer(path)
@@ -337,7 +337,7 @@ class SpaceAnalyzerWidget(QWidget):
                 folder = path if os.path.isdir(path) else os.path.dirname(path)
                 subprocess.run(['xdg-open', folder], check=False)
         except Exception:
-            QMessageBox.warning(self, 'Aviso', 'Não foi possível abrir no explorador.')
+            CustomDialog.warning(self, 'Aviso', 'Não foi possível abrir no explorador.')
 
     # ── Exportar ──────────────────────────────────────────────────────────────
 
@@ -354,12 +354,11 @@ class SpaceAnalyzerWidget(QWidget):
         try:
             with open(path, 'w', encoding='utf-8') as f:
                 f.write(self._generate_html_report(self._root_entry))
-            resp = QMessageBox.question(
+            resp = CustomDialog.question(
                 self, 'Relatório exportado',
                 f'Relatório salvo em:\n{path}\n\nDeseja abrir no navegador?',
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
-            if resp == QMessageBox.StandardButton.Yes:
+            if resp:
                 if sys.platform.startswith('win'):
                     os.startfile(path)
                 elif sys.platform == 'darwin':
@@ -367,7 +366,7 @@ class SpaceAnalyzerWidget(QWidget):
                 else:
                     subprocess.run(['xdg-open', path], check=False)
         except Exception as e:
-            QMessageBox.critical(self, 'Erro', f'Falha ao exportar relatório: {e}')
+            CustomDialog.critical(self, 'Erro', f'Falha ao exportar relatório: {e}')
 
     def _generate_html_report(self, entry: DirEntry) -> str:
         top_items = get_largest_items(entry, top_n=10)

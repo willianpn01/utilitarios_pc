@@ -1,7 +1,6 @@
 import os
 import sys
-import ctypes
-from PyQt6.QtWidgets import QApplication, QMessageBox
+from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import Qt
 
@@ -11,32 +10,55 @@ PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
+from app.ui.custom_dialog import CustomDialog
+
 from app.ui.main_window import MainWindow  # noqa: E402
 from app.core.system_tray import SystemTrayManager  # noqa: E402
+from app.core.app_paths import is_windows, get_lock_file_path
 
 # Nome do Mutex (deve ser único, usado pelo instalador Inno Setup)
 APP_MUTEX_NAME = "UtilitariosPCAppMutex"
 
+# Referência global para o lock file (evitar GC fechar o fd)
+_lock_file_handle = None
 
-def create_mutex():
+
+def acquire_instance_lock():
     """
-    Cria um Mutex do Windows para:
-    1. Prevenir múltiplas instâncias do app
-    2. Permitir que o instalador detecte se o app está rodando
+    Adquire um lock de instância única, cross-platform:
+    - Windows: Mutex via ctypes.windll.kernel32
+    - Linux/macOS: fcntl.flock() em ~/.utilitarios/app.lock
+    
+    Retorna um handle/fd (truthy) em caso de sucesso, ou None se já existe instância.
     """
-    if sys.platform != 'win32':
-        return None
-    
-    kernel32 = ctypes.windll.kernel32
-    mutex = kernel32.CreateMutexW(None, False, APP_MUTEX_NAME)
-    last_error = kernel32.GetLastError()
-    
-    # ERROR_ALREADY_EXISTS = 183
-    if last_error == 183:
-        # Já existe outra instância rodando
-        return None
-    
-    return mutex
+    global _lock_file_handle
+
+    if is_windows():
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        mutex = kernel32.CreateMutexW(None, False, APP_MUTEX_NAME)
+        last_error = kernel32.GetLastError()
+        # ERROR_ALREADY_EXISTS = 183
+        if last_error == 183:
+            return None
+        return mutex
+    else:
+        # Linux / macOS — usar fcntl.flock
+        import fcntl
+        lock_path = get_lock_file_path()
+        try:
+            _lock_file_handle = open(lock_path, 'w')
+            fcntl.flock(_lock_file_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            # Escrever PID no arquivo de lock
+            _lock_file_handle.write(str(os.getpid()))
+            _lock_file_handle.flush()
+            return _lock_file_handle
+        except (IOError, OSError):
+            # Já existe outra instância rodando
+            if _lock_file_handle:
+                _lock_file_handle.close()
+                _lock_file_handle = None
+            return None
 
 
 def get_resource_path(relative_path: str) -> str:
@@ -93,17 +115,21 @@ def main() -> int:
     # Verificar argumentos
     start_minimized = '--minimized' in sys.argv
     
-    # Criar Mutex para detecção pelo instalador e prevenção de múltiplas instâncias
-    mutex = create_mutex()
-    if mutex is None and sys.platform == 'win32':
-        # Já existe uma instância rodando
-        # Mostrar mensagem simples (sem QApplication ainda)
-        ctypes.windll.user32.MessageBoxW(
-            0,
-            "O Utilitários PC já está em execução.\n\nVerifique o ícone na bandeja do sistema.",
-            "Utilitários PC",
-            0x40  # MB_ICONINFORMATION
-        )
+    # Adquirir lock de instância única (cross-platform)
+    lock = acquire_instance_lock()
+    if lock is None:
+        # Já existe uma instância rodando — mostrar aviso nativo do sistema
+        if is_windows():
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(
+                0,
+                "O Utilitários PC já está em execução.\n\nVerifique o ícone na bandeja do sistema.",
+                "Utilitários PC",
+                0x40  # MB_ICONINFORMATION
+            )
+        else:
+            # No Linux/macOS, imprimir no terminal (sem QApplication ainda)
+            print("Utilitários PC já está em execução. Verifique o ícone na bandeja do sistema.")
         return 0
     
     app = QApplication(sys.argv)
@@ -149,7 +175,7 @@ def main() -> int:
     
     # Ação rápida: Pausar/retomar watchdog
     def toggle_watchdog_pause(minutes: int):
-        organizer = window.stack.widget(3)
+        organizer = window.stack.widget(MainWindow.PAGE_ORGANIZER)
         if hasattr(organizer, 'watcher_widget'):
             watcher = organizer.watcher_widget._watcher
             if minutes > 0:
@@ -165,7 +191,7 @@ def main() -> int:
     # Integrar toggle de monitoramento de pastas com o widget
     def toggle_monitoring():
         # Encontrar widget de monitoramento
-        organizer = window.stack.widget(3)  # Organizador é o índice 3
+        organizer = window.stack.widget(MainWindow.PAGE_ORGANIZER)
         if hasattr(organizer, 'watcher_widget'):
             watcher_widget = organizer.watcher_widget
             watcher_widget._toggle_monitoring()
@@ -175,7 +201,7 @@ def main() -> int:
     
     # Integrar toggle de monitoramento de clipboard com o widget
     def toggle_clipboard_monitoring():
-        clipboard_widget = window.stack.widget(8)  # Clipboard é o índice 8 (último)
+        clipboard_widget = window.stack.widget(MainWindow.PAGE_CLIPBOARD)
         if hasattr(clipboard_widget, 'chk_monitor'):
             # Toggle o estado
             current_state = clipboard_widget.chk_monitor.isChecked()
@@ -195,7 +221,7 @@ def main() -> int:
     
     # Conectar quando o widget for acessado
     def connect_watcher_signals():
-        organizer = window.stack.widget(3)
+        organizer = window.stack.widget(MainWindow.PAGE_ORGANIZER)
         if hasattr(organizer, 'watcher_widget'):
             organizer.watcher_widget.file_organized.connect(on_file_organized_notification)
             # Atualizar status do tray quando monitoramento mudar
