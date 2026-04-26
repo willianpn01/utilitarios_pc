@@ -14,6 +14,7 @@ from PyQt6.QtGui import QClipboard, QColor
 
 from app.core.clipboard_history import ClipboardHistoryDB, ClipboardEntry
 from app.core.logger import get_logger
+from app.ui.custom_dialog import CustomDialog
 
 _log = get_logger("clipboard.ui")
 

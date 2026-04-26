@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
 from app.core.batch_renamer import RenameRule, RenameItem, preview_renames, apply_renames
 from app.core.app_settings import load_setting, save_setting
 from app.core.logger import get_logger
+from app.ui.custom_dialog import CustomDialog
 
 log = get_logger(__name__)
 

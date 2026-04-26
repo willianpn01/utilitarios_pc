@@ -17,6 +17,7 @@ from PyQt6.QtGui import QColor
 from app.core.space_analyzer import analyze_directory, DirEntry, format_size, get_largest_items
 from app.core.app_settings import load_setting, save_setting
 from app.core.logger import get_logger
+from app.ui.custom_dialog import CustomDialog
 
 log = get_logger(__name__)
 

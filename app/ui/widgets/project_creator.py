@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
 
 from app.core.project_templates import TEMPLATES, render_tree, create_structure
 from app.core.logger import get_logger
+from app.ui.custom_dialog import CustomDialog
 
 _log = get_logger("project_creator.ui")
 

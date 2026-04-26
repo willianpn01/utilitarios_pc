@@ -16,6 +16,7 @@ from app.core.auto_organizer import (
     resolve_collision,
 )
 from app.core.logger import get_logger
+from app.ui.custom_dialog import CustomDialog
 import shutil
 import csv
 from datetime import datetime

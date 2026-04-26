@@ -15,6 +15,7 @@ from app.core.image_resizer import (
     ResizeOptions, batch_resize, ProcessResult, get_image_files
 )
 from app.core.logger import get_logger
+from app.ui.custom_dialog import CustomDialog
 
 _log = get_logger("image_resizer.ui")
 

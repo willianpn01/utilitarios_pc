@@ -27,6 +27,7 @@ from app.core.watcher_config import (
 from app.core.auto_organizer import default_mapping
 from app.core.autostart import is_autostart_enabled, set_autostart, is_windows
 from app.core.logger import get_logger
+from app.ui.custom_dialog import CustomDialog
 
 # Nome distinto para não colidir com o método de instância self._log() (UI).
 _logger = get_logger("watcher.ui")

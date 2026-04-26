@@ -14,6 +14,7 @@ from PyQt6.QtGui import QColor
 
 from app.core.folder_compare import compare_directories, CompareResult, FileInfo
 from app.core.logger import get_logger
+from app.ui.custom_dialog import CustomDialog
 
 _log = get_logger("folder_compare.ui")
 
