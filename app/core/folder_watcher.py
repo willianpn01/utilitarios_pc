@@ -16,10 +16,13 @@ from datetime import datetime
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler, FileCreatedEvent, FileMovedEvent
 
-from app.core.auto_organizer import parse_rules, OrganizeRule
+from app.core.auto_organizer import parse_rules, OrganizeRule, resolve_collision
+from app.core.logger import get_logger
 
 if TYPE_CHECKING:
     from app.core.watcher_config import WatchConfig
+
+_log = get_logger("watcher")
 
 
 @dataclass
@@ -101,24 +104,22 @@ class OrganizeHandler(FileSystemEventHandler):
         
         try:
             os.makedirs(dest_dir, exist_ok=True)
-            
-            # Lidar com arquivo existente no destino
-            if os.path.exists(dest_path):
-                base, ext = os.path.splitext(basename)
-                i = 1
-                while os.path.exists(dest_path):
-                    dest_path = os.path.join(dest_dir, f"{base} ({i}){ext}")
-                    i += 1
-                event.destination = dest_path
-            
+
+            # Resolve colisão: se o destino já existe, gerar nome único.
+            dest_path = resolve_collision(dest_path)
+            event.destination = dest_path
+
             # Mover arquivo
             import shutil
             shutil.move(filepath, dest_path)
             event.success = True
-            
+            _log.info("Arquivo organizado: %s -> %s (categoria=%s)",
+                      filepath, dest_path, category)
+
         except Exception as e:
             event.error = str(e)
-        
+            _log.exception("Falha ao organizar %s -> %s", filepath, dest_path)
+
         if self.on_file_organized:
             self.on_file_organized(event)
     
@@ -260,11 +261,14 @@ class FolderWatcher:
             observer.start()
             self._observers[path] = observer
             self._handlers[path] = handler
-            
+            _log.info("Observer iniciado em: %s", path)
+
             if self._on_status_changed:
                 self._on_status_changed(path, True)
         except Exception:
-            pass
+            _log.exception("Falha ao iniciar observer em %s", path)
+            if self._on_status_changed:
+                self._on_status_changed(path, False)
     
     def _stop_observer(self, path: str) -> None:
         """Para observer para um caminho."""

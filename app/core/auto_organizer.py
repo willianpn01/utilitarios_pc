@@ -126,6 +126,26 @@ def build_plan(directory: str, rule: OrganizeRule) -> List[PlanItem]:
     return plan
 
 
+def resolve_collision(dst: str) -> str:
+    """
+    Se `dst` já existir, retorna um caminho único no mesmo diretório
+    sufixado com ``" (N)"``. Usado tanto em `build_plan` quanto em `apply_plan`
+    para evitar sobrescrita em tempo de execução (dois itens do mesmo plano
+    colidindo para o mesmo destino, ou arquivo criado por terceiro entre
+    o planejamento e a aplicação).
+    """
+    if not os.path.exists(dst):
+        return dst
+    parent = os.path.dirname(dst)
+    base, ext = os.path.splitext(os.path.basename(dst))
+    i = 1
+    while True:
+        candidate = os.path.join(parent, f"{base} ({i}){ext}")
+        if not os.path.exists(candidate):
+            return candidate
+        i += 1
+
+
 def apply_plan(plan: List[PlanItem]) -> Tuple[int, int, int]:
     moved = 0
     skipped = 0
@@ -136,6 +156,11 @@ def apply_plan(plan: List[PlanItem]) -> Tuple[int, int, int]:
             continue
         try:
             os.makedirs(os.path.dirname(item.dst), exist_ok=True)
+            # Resolve colisão em runtime: outro item do mesmo plano pode já
+            # ter ocupado item.dst (dois arquivos com mesmo nome em subpastas
+            # diferentes quando recursive=True), ou o arquivo pode ter sido
+            # criado por outro processo entre o build_plan e o apply_plan.
+            item.dst = resolve_collision(item.dst)
             shutil.move(item.src, item.dst)
             moved += 1
         except Exception as e:

@@ -12,11 +12,15 @@ from PyQt6.QtGui import QTextCharFormat, QColor, QTextCursor
 from PyQt6.QtCore import Qt, QSettings, QThread, QObject, pyqtSignal
 
 from app.core.auto_organizer import (
-    parse_rules, default_mapping, build_plan, apply_plan, PlanItem
+    parse_rules, default_mapping, build_plan, apply_plan, PlanItem,
+    resolve_collision,
 )
+from app.core.logger import get_logger
 import shutil
 import csv
 from datetime import datetime
+
+_log = get_logger("organizer.ui")
 
 
 def get_undo_history_dir() -> str:
@@ -372,9 +376,13 @@ class AutoOrganizerWidget(QWidget):
             
             def run(self):
                 try:
+                    _log.info("Prévia: gerando plano para %s (recursive=%s)",
+                              self.directory, self.rule.recursive)
                     plan = build_plan(self.directory, self.rule)
+                    _log.info("Prévia concluída: %d itens no plano", len(plan))
                     self.finished.emit(plan)
                 except Exception as e:
+                    _log.exception("Falha ao gerar prévia para %s", self.directory)
                     self.error.emit(str(e))
         
         thread = QThread(self)
@@ -469,6 +477,9 @@ class AutoOrganizerWidget(QWidget):
             def run(self):
                 moved = skipped = errors = 0
                 step = 0
+                total_moves = sum(1 for i in self.plan if i.action == 'move')
+                _log.info("Aplicação iniciada: %d itens para mover (undo=%s)",
+                          total_moves, self.undo_file)
                 try:
                     with open(self.undo_file, 'w', newline='', encoding='utf-8') as f:
                         writer = csv.writer(f)
@@ -478,21 +489,33 @@ class AutoOrganizerWidget(QWidget):
                                 skipped += 1
                                 continue
                             if self.cancel:
+                                _log.warning("Aplicação cancelada pelo usuário após %d movidos", moved)
                                 break
                             try:
                                 os.makedirs(os.path.dirname(item.dst), exist_ok=True)
                                 if self.cancel:
                                     break
+                                # Resolve colisão em runtime (dois itens do plano
+                                # podem apontar para o mesmo dst, ou o arquivo
+                                # pode ter sido criado por terceiro após o preview).
+                                item.dst = resolve_collision(item.dst)
                                 writer.writerow([item.src, item.dst])
                                 shutil.move(item.src, item.dst)
                                 moved += 1
                             except Exception as e:
+                                _log.exception("Falha ao mover %s -> %s",
+                                               item.src, item.dst)
                                 item.action = 'error'
                                 item.reason = str(e)
                                 errors += 1
                             step += 1
                             self.progress.emit(step, os.path.basename(item.src))
+                except Exception:
+                    _log.exception("Erro inesperado no ApplyWorker (undo=%s)", self.undo_file)
+                    raise
                 finally:
+                    _log.info("Aplicação finalizada: movidos=%d pulados=%d erros=%d",
+                              moved, skipped, errors)
                     self.done.emit(moved, skipped, errors, self.undo_file)
 
         thread = QThread(self)
