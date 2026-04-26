@@ -55,3 +55,12 @@ DOCUMENTACAO_TECNICA.md
 # - installer/ (contém o setup final para distribuição)
 # - build.bat (script de build)
 # - installer.iss (script do Inno Setup)
+
+# Artefatos gerados em runtime (não devem ser versionados)
+app/relatorio_espaco_*.html
+app/undo_history/
+undo_history/
+
+# Artefatos locais do instalador gerados pelo Inno Setup
+installer/UtilitariosPC_Setup_*.exe
+installer/SHA256SUMS-*.txt

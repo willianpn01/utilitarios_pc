@@ -2,9 +2,12 @@
 ; Requer Inno Setup 6+: https://jrsoftware.org/isinfo.php
 
 #define MyAppName "Utilitários PC"
-#define MyAppVersion "1.1.0"
+; Versão pode ser injetada pela CI via:  ISCC.exe /DMyAppVersion=1.2.3 installer.iss
+#ifndef MyAppVersion
+  #define MyAppVersion "1.2.0"
+#endif
 #define MyAppPublisher "Projeto Utilitarios"
-#define MyAppURL "https://github.com/seu-usuario/utilitarios-pc"
+#define MyAppURL "https://github.com/willianpn01/utilitarios_pc"
 #define MyAppExeName "UtilitariosPC.exe"
 #define MyAppDataFolder ".utilitarios"
 #define MyAppMutex "UtilitariosPCAppMutex"
@@ -51,8 +54,9 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "startupentry"; Description: "Iniciar automaticamente com o Windows"; GroupDescription: "Opções adicionais:"; Flags: unchecked
 
 [Files]
-; Executável principal
-Source: "dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+; Build standalone do Nuitka: copia a pasta inteira (exe + DLLs + assets).
+; O entry point é app/main.py, então Nuitka gera dist\main.dist\.
+Source: "dist\main.dist\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; VC++ Redistributable (necessário para Python/Nuitka)
 Source: "dist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
