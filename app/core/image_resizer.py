@@ -4,6 +4,10 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 from PIL import Image, ImageOps
 
+from app.core.logger import get_logger
+
+_log = get_logger("image_resizer")
+
 
 @dataclass
 class ResizeOptions:
@@ -194,6 +198,7 @@ def resize_image(
             )
     
     except Exception as e:
+        _log.exception("Falha ao processar imagem %s -> %s", src_path, dst_path)
         return ProcessResult(
             src_path=src_path,
             dst_path=dst_path,

@@ -26,6 +26,10 @@ from app.core.watcher_config import (
 )
 from app.core.auto_organizer import default_mapping
 from app.core.autostart import is_autostart_enabled, set_autostart, is_windows
+from app.core.logger import get_logger
+
+# Nome distinto para não colidir com o método de instância self._log() (UI).
+_logger = get_logger("watcher.ui")
 
 
 class AddWatchDialog(QDialog):
@@ -360,13 +364,24 @@ class FolderWatcherWidget(QWidget):
             )
             return
         
-        self._watcher.start()
+        try:
+            self._watcher.start()
+        except Exception:
+            _logger.exception("Falha ao iniciar monitoramento")
+            self._log("Erro ao iniciar monitoramento (ver app.log)", color="red")
+            return
+        _logger.info("Monitoramento iniciado (%d pastas configuradas)",
+                     len(self._watcher.watched_paths))
         self._update_ui_state()
         self._log("Monitoramento iniciado")
     
     def _stop_monitoring(self):
         """Para monitoramento."""
-        self._watcher.stop()
+        try:
+            self._watcher.stop()
+        except Exception:
+            _logger.exception("Falha ao parar monitoramento")
+        _logger.info("Monitoramento parado")
         self._update_ui_state()
         self._log("Monitoramento parado")
     
@@ -401,8 +416,14 @@ class FolderWatcherWidget(QWidget):
                     return
             
             # Adicionar
-            self._watcher.add_watch(config)
-            add_watch_config(config.path, config.rules_text)
+            try:
+                self._watcher.add_watch(config)
+                add_watch_config(config.path, config.rules_text)
+            except Exception:
+                _logger.exception("Falha ao adicionar pasta %s", config.path)
+                self._log(f"Erro ao adicionar {config.path} (ver app.log)", color="red")
+                return
+            _logger.info("Pasta adicionada ao watcher: %s", config.path)
             self._refresh_table()
             self._log(f"Pasta adicionada: {config.path}")
     
@@ -453,8 +474,14 @@ class FolderWatcherWidget(QWidget):
         )
         
         if resp:
-            self._watcher.remove_watch(config.path)
-            remove_watch_config(config.path)
+            try:
+                self._watcher.remove_watch(config.path)
+                remove_watch_config(config.path)
+            except Exception:
+                _logger.exception("Falha ao remover pasta %s", config.path)
+                self._log(f"Erro ao remover {config.path} (ver app.log)", color="red")
+                return
+            _logger.info("Pasta removida do watcher: %s", config.path)
             self._refresh_table()
             self._log(f"Pasta removida: {config.path}")
     
@@ -508,7 +535,10 @@ class FolderWatcherWidget(QWidget):
     
     def closeEvent(self, event):
         """Para watcher ao fechar."""
-        self._watcher.stop()
+        try:
+            self._watcher.stop()
+        except Exception:
+            _logger.exception("Falha ao parar watcher no closeEvent")
         
         # Salvar configurações
         configs = self._watcher.get_all_configs()

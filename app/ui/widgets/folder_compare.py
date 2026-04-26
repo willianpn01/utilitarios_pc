@@ -13,6 +13,9 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QColor
 
 from app.core.folder_compare import compare_directories, CompareResult, FileInfo
+from app.core.logger import get_logger
+
+_log = get_logger("folder_compare.ui")
 
 
 class CompareWorker(QObject):
@@ -29,6 +32,8 @@ class CompareWorker(QObject):
     
     def run(self) -> None:
         try:
+            _log.info("Comparando %s vs %s (recursive=%s, content=%s)",
+                      self.left, self.right, self.recursive, self.compare_content)
             self.progress.emit('Comparando diretórios...')
             result = compare_directories(
                 self.left,
@@ -37,7 +42,8 @@ class CompareWorker(QObject):
                 compare_content=self.compare_content
             )
             self.done.emit(result)
-        except Exception as e:
+        except Exception:
+            _log.exception("Falha ao comparar %s vs %s", self.left, self.right)
             self.done.emit(None)
 
 
@@ -354,6 +360,8 @@ class FolderCompareWidget(QWidget):
                     os.remove(right_info.path)
                     success += 1
             except Exception:
+                _log.exception("Falha em ação '%s' (left=%s right=%s)",
+                               action, left_info, right_info)
                 errors += 1
         
         CustomDialog.information(

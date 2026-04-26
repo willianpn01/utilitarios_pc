@@ -4,6 +4,10 @@ import re
 from dataclasses import dataclass
 from typing import Callable, Iterable, List, Optional, Tuple
 
+from app.core.logger import get_logger
+
+_log = get_logger("batch_renamer.core")
+
 
 @dataclass
 class RenameRule:
@@ -181,6 +185,7 @@ def apply_renames(
             os.replace(it.src, it.dst)
             renamed.append((it.dst, it.src))  # armazenar para rollback
         except Exception:  # noqa: BLE001
+            _log.exception("Falha ao renomear %s -> %s; iniciando rollback", it.src, it.dst)
             errors += 1
             # rollback
             for done_dst, done_src in reversed(renamed):
@@ -188,7 +193,7 @@ def apply_renames(
                     if os.path.exists(done_dst):
                         os.replace(done_dst, done_src)
                 except Exception:
-                    pass
+                    _log.exception("Falha no rollback %s -> %s", done_dst, done_src)
             if progress_cb:
                 progress_cb(100, 'Erro — rollback aplicado')
             return (len(renamed), skipped, errors)

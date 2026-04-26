@@ -13,6 +13,9 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QClipboard, QColor
 
 from app.core.clipboard_history import ClipboardHistoryDB, ClipboardEntry
+from app.core.logger import get_logger
+
+_log = get_logger("clipboard.ui")
 
 
 # ============================================================

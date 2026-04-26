@@ -14,6 +14,9 @@ from PyQt6.QtGui import QColor
 from app.core.image_resizer import (
     ResizeOptions, batch_resize, ProcessResult, get_image_files
 )
+from app.core.logger import get_logger
+
+_log = get_logger("image_resizer.ui")
 
 
 class ResizeWorker(QObject):
@@ -38,6 +41,8 @@ class ResizeWorker(QObject):
     
     def run(self) -> None:
         try:
+            _log.info("Resize iniciado: src=%s dst=%s recursive=%s",
+                      self.src_dir, self.dst_dir, self.recursive)
             # Processar em lote
             results = batch_resize(
                 self.src_dir,
@@ -46,8 +51,11 @@ class ResizeWorker(QObject):
                 self.recursive,
                 self.suffix
             )
+            _log.info("Resize finalizado: %d resultados", len(results))
             self.done.emit(results)
-        except Exception as e:
+        except Exception:
+            _log.exception("Falha no batch_resize (src=%s dst=%s)",
+                           self.src_dir, self.dst_dir)
             self.done.emit([])
 
 

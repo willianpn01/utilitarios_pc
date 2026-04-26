@@ -1,14 +1,79 @@
 import os
 import sys
-from PyQt6.QtWidgets import QApplication
-from PyQt6.QtGui import QIcon
-from PyQt6.QtCore import Qt
+import faulthandler
+import threading
 
 # Ajusta o path para imports relativos quando executado diretamente
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
+
+# ─── Captura de crashes GLOBAIS ──────────────────────────────────────────────
+# Precisa ser o mais cedo possível, ANTES de qualquer import pesado, para
+# garantir que mesmo crashes durante a inicialização sejam registrados.
+# Build com --windows-console-mode=disable jogaria stderr para o vazio; sem
+# isso, "app fechou sozinho" não deixa nenhum rastro.
+def _install_global_crash_handlers() -> None:
+    try:
+        from app.core.logger import get_logger
+        from app.core.app_paths import get_log_dir
+    except Exception:
+        # Se até o logger falha, ao menos imprime no stderr (que pode estar
+        # redirecionado, mas é o melhor que dá para fazer aqui).
+        import traceback
+        traceback.print_exc()
+        return
+
+    crash_log = get_logger("crash")
+
+    # 1) faulthandler: captura segfault/abort do C/Qt e despeja stack nativo
+    #    em fault.log. Funciona mesmo quando o Python está corrompido.
+    try:
+        fault_path = os.path.join(get_log_dir(), "fault.log")
+        # Mantém o handle aberto durante toda a vida do processo.
+        fault_fp = open(fault_path, "a", encoding="utf-8", buffering=1)
+        faulthandler.enable(file=fault_fp, all_threads=True)
+    except Exception:
+        crash_log.exception("Falha ao habilitar faulthandler")
+
+    # 2) sys.excepthook: captura exceções Python não tratadas no thread principal.
+    def _py_excepthook(exc_type, exc_value, exc_tb):
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc_value, exc_tb)
+            return
+        crash_log.error(
+            "Exceção não tratada no thread principal",
+            exc_info=(exc_type, exc_value, exc_tb),
+        )
+        # Encadeia o handler original (caso console esteja visível)
+        sys.__excepthook__(exc_type, exc_value, exc_tb)
+
+    sys.excepthook = _py_excepthook
+
+    # 3) threading.excepthook: captura exceções não tratadas em threads Python
+    #    (QThread em PyQt geralmente protege a thread, mas worker.run() puro
+    #    via threading.Thread, threading.Timer, etc. cai aqui).
+    def _thread_excepthook(args):
+        if issubclass(args.exc_type, SystemExit):
+            return
+        crash_log.error(
+            "Exceção não tratada na thread '%s'",
+            getattr(args.thread, "name", "?"),
+            exc_info=(args.exc_type, args.exc_value, args.exc_traceback),
+        )
+
+    threading.excepthook = _thread_excepthook
+
+    crash_log.info("Crash handlers instalados (faulthandler + excepthook)")
+
+
+_install_global_crash_handlers()
+# ─────────────────────────────────────────────────────────────────────────────
+
+from PyQt6.QtWidgets import QApplication
+from PyQt6.QtGui import QIcon
+from PyQt6.QtCore import Qt
 
 from app.ui.custom_dialog import CustomDialog
 

@@ -7,6 +7,9 @@ from PyQt6.QtWidgets import (
 )
 
 from app.core.project_templates import TEMPLATES, render_tree, create_structure
+from app.core.logger import get_logger
+
+_log = get_logger("project_creator.ui")
 
 
 class ProjectCreatorWidget(QWidget):
@@ -78,8 +81,11 @@ class ProjectCreatorWidget(QWidget):
         name = self.tpl_combo.currentText()
         structure = TEMPLATES.get(name, {})
         try:
+            _log.info("Criando estrutura '%s' em %s", name, base)
             created_paths = create_structure(base, structure)
+            _log.info("Estrutura criada (%d itens)", len(created_paths))
         except Exception as e:  # noqa: BLE001
+            _log.exception("Falha ao criar estrutura '%s' em %s", name, base)
             CustomDialog.critical(self, 'Erro', f'Falha ao criar estrutura:\n{e}')
             return
         CustomDialog.information(
